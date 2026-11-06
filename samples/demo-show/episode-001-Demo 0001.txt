@@ -1,0 +1,145 @@
+EPISODE NUMBER: Episode 1
+EPISODE LOGLINE: Humiliated at a hotel gala by her husband Daniel and his mother Vivienne, Mara Quill loses her marriage and her father's boatyard, then meets a lawyer who says her dead grandfather left her the harbour.
+CONTINUITY NOTES: First episode of a fictional demo show written for this tool. Introduces Mara, Daniel, Vivienne.
+
+--- SCRIPT START ---
+
+SCENE 01
+Scene heading: INT. SALT HARBOUR HOTEL BALLROOM – NIGHT
+Scene start: 00:00.00
+Scene end: 00:46.50
+
+Actions and dialogue:
+
+**SOUND FX:**
+Start: (00:00.00) | End: (00:01.00)
+Sharp crack of a slap echoes across the ballroom.
+
+**ACTION:**
+Start: (00:01.00) | End: (00:03.50)
+Vivienne slaps Mara across the face in front of two hundred guests.
+
+**VIVIENNE (Icy, Loud):**
+Start: (00:03.50) | End: (00:06.50)
+"You are nothing but the help, Mara!"
+
+**CAMERA:**
+Start: (00:06.50) | End: (00:09.00)
+Close-up on Mara's stinging cheek as her hand rises to touch it.
+
+**MARA (Shaken, Quiet):**
+Start: (00:09.00) | End: (00:12.00)
+"Daniel told me I was his wife."
+
+**VIVIENNE (Laughing, Cruel):**
+Start: (00:12.00) | End: (00:15.50)
+"My son married you for one reason. Your father's boatyard."
+
+**ACTION:**
+Start: (00:15.50) | End: (00:18.00)
+The guests fall silent. Daniel stands at the bar and does not turn around.
+
+**MARA (Pleading):**
+Start: (00:18.00) | End: (00:20.50)
+"Daniel, tell your mother she is lying."
+
+**DANIEL (Flat, Cold):**
+Start: (00:20.50) | End: (00:23.50)
+"The papers are signed. I want a divorce, Mara."
+
+**CAMERA:**
+Start: (00:23.50) | End: (00:25.50)
+Slow push-in on Mara as the words land.
+
+**MARA (Barely A Whisper):**
+Start: (00:25.50) | End: (00:28.00)
+"We have been married for three years."
+
+**DANIEL (Dismissive):**
+Start: (00:28.00) | End: (00:31.00)
+"And the boatyard has been mine for three days."
+
+**ACTION:**
+Start: (00:31.00) | End: (00:34.00)
+Vivienne drops a pen at Mara's feet and points to the divorce papers on the table.
+
+**VIVIENNE (Smiling):**
+Start: (00:34.00) | End: (00:37.00)
+"Sign it, and you may keep the dress you are wearing."
+
+**ACTION:**
+Start: (00:37.00) | End: (00:40.50)
+Mara picks up the pen, walks to the table and tears the papers in two.
+
+**MARA (Steady, Rising):**
+Start: (00:40.50) | End: (00:44.00)
+"My father built that yard with his hands. I will take it back."
+
+**DANIEL (Amused):**
+Start: (00:44.00) | End: (00:46.50)
+"With what? You have nothing."
+
+SCENE 02
+Scene heading: EXT. SALT HARBOUR DOCK – NIGHT
+Scene start: 00:46.50
+Scene end: 01:27.00
+
+Actions and dialogue:
+
+**ACTION:**
+Start: (00:46.50) | End: (00:50.50)
+Rain falls on the empty dock. Mara stands alone at the edge with her shoes in her hand.
+
+**SOUND FX:**
+Start: (00:50.50) | End: (00:53.50)
+Rain on the water and a distant ship horn.
+
+**MARA (To Herself):**
+Start: (00:53.50) | End: (00:56.50)
+"Three years. And I never saw it."
+
+**ACTION:**
+Start: (00:56.50) | End: (01:00.00)
+A black car stops at the end of the dock. An old man in a grey coat climbs out with a cane.
+
+**OLD MAN (Gravely):**
+Start: (01:00.00) | End: (01:03.50)
+"Miss Mara Quill? I have been looking for you for twenty years."
+
+**MARA (Wary):**
+Start: (01:03.50) | End: (01:05.50)
+"Who are you?"
+
+**OLD MAN (Calm):**
+Start: (01:05.50) | End: (01:08.50)
+"I was your grandfather's lawyer."
+
+**ACTION:**
+Start: (01:08.50) | End: (01:11.50)
+He holds out a sealed envelope with a heavy wax crest.
+
+**OLD MAN (Low):**
+Start: (01:11.50) | End: (01:15.50)
+"He left you the whole harbour, Mara. Every dock and every ship."
+
+**CAMERA:**
+Start: (01:15.50) | End: (01:17.50)
+Close-up on Mara's trembling hand taking the envelope.
+
+**MARA (Stunned):**
+Start: (01:17.50) | End: (01:20.00)
+"That is not possible. My grandfather is dead."
+
+**OLD MAN (Leaning In):**
+Start: (01:20.00) | End: (01:23.50)
+"Is he? Then who do you think sent me?"
+
+**SOUND FX:**
+Start: (01:23.50) | End: (01:26.00)
+Low ominous drone swells into a cliffhanger sting.
+
+**CAMERA:**
+Start: (01:26.00) | End: (01:27.00)
+Cut to black.
+
+--- SCRIPT END ---

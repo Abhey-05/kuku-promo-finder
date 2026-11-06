@@ -72,8 +72,10 @@ export type CueFeature = 'hook' | 'cliffhanger' | 'standalone';
 export interface Cue {
   feature: CueFeature;
   group: string;
-  /** The word or phrase that matched. Always a verbatim substring of `text`. */
+  /** The word or phrase that matched. A verbatim substring of `text`, unless `derived`. */
   match: string;
+  /** True when the cue is a count or a label, not words found in `text`. */
+  derived?: boolean;
   /** Verbatim text of the entry the cue came from. */
   text: string;
   /** Effect on the score: positive weight, negative for a penalty. */

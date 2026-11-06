@@ -1,0 +1,141 @@
+EPISODE NUMBER: Episode 2
+EPISODE LOGLINE: Mara confronts her aunt Isolde, learns her grandfather is alive and held in a lighthouse by Vivienne, and walks into a trap set by Vivienne and Daniel.
+CONTINUITY NOTES: Fictional demo content. Continues directly from the dock.
+
+--- SCRIPT START ---
+
+SCENE 01
+Scene heading: INT. QUILL FAMILY CHAPEL – DAY
+Scene start: 00:00.00
+Scene end: 00:43.50
+
+Actions and dialogue:
+
+**SOUND FX:**
+Start: (00:00.00) | End: (00:01.50)
+Heavy iron door slams shut.
+
+**ACTION:**
+Start: (00:01.50) | End: (00:03.50)
+Mara storms in through the chapel doors with the envelope in her fist.
+
+**MARA (Furious):**
+Start: (00:03.50) | End: (00:06.50)
+"You told me my grandfather drowned!"
+
+**AUNT ISOLDE (Startled):**
+Start: (00:06.50) | End: (00:09.00)
+"Mara. Who gave you that?"
+
+**MARA (Sharp):**
+Start: (00:09.00) | End: (00:11.50)
+"Is he alive? Tell me the truth."
+
+**ACTION:**
+Start: (00:11.50) | End: (00:14.50)
+Aunt Isolde locks the chapel door and lowers her voice.
+
+**AUNT ISOLDE (Whispering):**
+Start: (00:14.50) | End: (00:18.00)
+"Your grandfather is alive. And your husband knows it."
+
+**MARA (Reeling):**
+Start: (00:18.00) | End: (00:20.50)
+"Daniel knew?"
+
+**AUNT ISOLDE (Grim):**
+Start: (00:20.50) | End: (00:24.00)
+"Why do you think he married you? He needed the Quill name."
+
+**CAMERA:**
+Start: (00:24.00) | End: (00:26.00)
+Close-up on Mara as the last of her trust falls away.
+
+**MARA (Cold):**
+Start: (00:26.00) | End: (00:29.00)
+"Where is my grandfather now?"
+
+**AUNT ISOLDE (Afraid):**
+Start: (00:29.00) | End: (00:32.50)
+"In the old lighthouse. Vivienne has kept him there for twenty years."
+
+**ACTION:**
+Start: (00:32.50) | End: (00:35.50)
+Mara turns for the door. Aunt Isolde grabs her arm.
+
+**AUNT ISOLDE (Urgent):**
+Start: (00:35.50) | End: (00:38.50)
+"If you go tonight, she will kill you both."
+
+**MARA (Quietly Certain):**
+Start: (00:38.50) | End: (00:41.50)
+"Then she had better be ready."
+
+**SOUND FX:**
+Start: (00:41.50) | End: (00:43.50)
+Thunder rolls over the sea.
+
+SCENE 02
+Scene heading: INT. LIGHTHOUSE STAIRWELL – NIGHT
+Scene start: 00:43.50
+Scene end: 01:21.50
+
+Actions and dialogue:
+
+**ACTION:**
+Start: (00:43.50) | End: (00:47.00)
+Mara climbs the iron stairs with a lantern as the wind screams through the walls.
+
+**SOUND FX:**
+Start: (00:47.00) | End: (00:50.00)
+Slow, heavy heartbeat under the wind.
+
+**ACTION:**
+Start: (00:50.00) | End: (00:53.00)
+She reaches a door with a new brass lock and presses her ear to the wood.
+
+**OLD VOICE (Weak, Muffled):**
+Start: (00:53.00) | End: (00:56.00)
+"Is someone there?"
+
+**MARA (Breathless):**
+Start: (00:56.00) | End: (00:58.50)
+"Grandfather? It is Mara."
+
+**OLD VOICE (Trembling):**
+Start: (00:58.50) | End: (01:01.50)
+"Mara... run. She is right behind you."
+
+**CAMERA:**
+Start: (01:01.50) | End: (01:03.50)
+Snap zoom on Mara's face as a shadow falls over her shoulder.
+
+**VIVIENNE (Soft, Delighted):**
+Start: (01:03.50) | End: (01:06.50)
+"You always were your father's daughter."
+
+**ACTION:**
+Start: (01:06.50) | End: (01:09.50)
+Vivienne raises a pistol. Daniel steps out of the dark behind her.
+
+**MARA (Shaking):**
+Start: (01:09.50) | End: (01:12.00)
+"Daniel, please."
+
+**DANIEL (Unreadable):**
+Start: (01:12.00) | End: (01:15.50)
+"I told you to sign the papers, Mara. Now I have to choose."
+
+**ACTION:**
+Start: (01:15.50) | End: (01:18.00)
+Daniel lifts his hand toward the pistol.
+
+**SOUND FX:**
+Start: (01:18.00) | End: (01:20.50)
+Ominous string swell holding into a cliffhanger sting.
+
+**CAMERA:**
+Start: (01:20.50) | End: (01:21.50)
+Hard cut to black.
+
+--- SCRIPT END ---
