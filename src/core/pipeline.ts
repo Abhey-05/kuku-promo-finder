@@ -4,7 +4,7 @@ import { byScore, generateCandidates } from './score';
 import { applyDiversity, nonMaxSuppression, toPromo } from './rank';
 import { rerank } from './llm/interface';
 import { summarise } from './llm/prompt';
-import { RERANK_POOL } from './config';
+import { RERANK_POOL, RUNNERS_UP } from './config';
 
 export type Stage = 'parse' | 'segment' | 'score' | 'judge' | 'finalize';
 export const STAGES: Stage[] = ['parse', 'segment', 'score', 'judge', 'finalize'];
@@ -69,6 +69,11 @@ export async function runPipeline(
   });
   const plain = applyDiversity(survivors, config.top, config.maxPerEpisode);
   const heuristicPromos = plain.chosen.map((c, i) => toPromo(c, i + 1, heuristicRanks.get(c.id)!, ctx.episodes));
+  const shortlisted = new Set(promos.map((p) => p.id));
+  const runnersUp = survivors
+    .filter((c) => !shortlisted.has(c.id))
+    .slice(0, RUNNERS_UP)
+    .map((c, i) => toPromo(c, promos.length + i + 1, heuristicRanks.get(c.id)!, ctx.episodes));
   timings.finalize = ms(t);
 
   return {
@@ -77,6 +82,7 @@ export async function runPipeline(
     candidates: all.map((c) => ({ ...c, kept: keptIds.has(c.id) })),
     promos,
     heuristicPromos,
+    runnersUp,
     log: {
       label: config.label,
       config,

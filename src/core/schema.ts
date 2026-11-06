@@ -240,8 +240,13 @@ export interface RunResult {
   promos: Promo[];
   /** Best promos in plain heuristic order, for the order toggle in the UI. */
   heuristicPromos: Promo[];
+  /** The next survivors after the top N, so an editor can label beyond the shortlist. */
+  runnersUp: Promo[];
   log: RunLog;
 }
+
+/** What the web worker sends back. Leaves out the 25k candidates; they stay in the zip. */
+export type RunView = Pick<RunResult, 'parseReport' | 'promos' | 'heuristicPromos' | 'runnersUp' | 'log'>;
 
 export interface InputFile {
   name: string;

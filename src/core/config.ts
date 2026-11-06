@@ -14,3 +14,6 @@ export const DEFAULT_CONFIG: Config = {
 
 /** How many survivors of NMS go to the model. Keeps cost flat per show. */
 export const RERANK_POOL = 30;
+
+/** Survivors shown after the shortlist in the web app. */
+export const RUNNERS_UP = 40;

@@ -101,7 +101,6 @@ function promoSegment(ep: Episode, s: Segment): PromoSegment {
     scene_ids: sceneNums,
     scene_headings: sceneNums.map((n) => ep.scenes.find((x) => x.number === n)?.heading ?? ''),
     text: inside
-      .filter((e) => e.type !== 'CAMERA')
       .map((e) => `[${formatTimestamp(e.start)}] ${e.type === 'DIALOGUE' ? `${e.speaker}: ` : `${e.type}: `}${e.text}`)
       .join('\n'),
   };
