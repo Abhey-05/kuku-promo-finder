@@ -1,0 +1,7 @@
+{
+  "hook": 0.35,
+  "cliffhanger": 0.35,
+  "standalone": 0.15,
+  "duration": 0.15,
+  "joinPenalty": 0.05
+}

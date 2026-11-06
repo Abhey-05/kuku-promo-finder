@@ -1,0 +1,15 @@
+input_pack/
+runs/
+raw-outputs/
+node_modules/
+dist/
+.env*
+*.local
+docs/labels.csv
+docs/private/
+labels.csv
+*.zip
+*.tsbuildinfo
+.vercel
+.DS_Store
+coverage/
