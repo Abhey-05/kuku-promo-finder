@@ -15,3 +15,9 @@ Numbered in the order they were made. The brief says to assume rather than ask.
 11. **The join penalty is 0.08, not 0.05.** At 0.05, stitched promos took 3 of the top 4 places, which goes against "usually one continuous stretch".
 12. **NMS also drops a promo that shares an exact opening or ending with a better one.** Overlap under 50% can still mean the same hook posted twice, once a stitched promo is allowed.
 13. **A clip cannot start on a continuation line** (one opening with an ellipsis, a dash or a lower-case letter). The first evaluation found clips that began mid-sentence.
+14. **Labels came from Claude Code, not a human editor.** The brief asked for the builder's own judgment, and Claude Code applied the three tests in the brief while building. They need a human review before anyone relies on them.
+15. **The random baseline uses NMS survivors.** The brief says "valid candidates". Survivors are harder to beat than the full 25k, most of which are near-copies.
+16. **Raw outputs hold excerpts only.** `promos.json`, `ranking.md` and `candidates_all.csv` carry the excerpts and cue words the promos use, and they go only to Kuku's reviewers. Full episodes are never written out.
+17. **The live app is on GitHub Pages.** The Vercel CLI had no login on the build machine, and the brief allows this fallback. `docs/DEPLOY.md` has the Vercel steps.
+18. **The LLM pool is 30 candidates.** Only the top survivors go to the model, which keeps cost per show flat as episodes grow.
+19. **`gemini-2.5-flash` is only the default model name.** It is one text field, so it can be swapped when the model is retired.

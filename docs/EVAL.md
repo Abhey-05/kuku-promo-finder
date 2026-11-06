@@ -35,7 +35,7 @@ All numbers come from `npm run eval -- metrics` on the full 50-episode pack unle
 | Parse coverage | 50/50 episodes, 3727 entries, 100 scenes, 0 unparsed lines, 0 violations |
 | Pack length | 102.7 minutes |
 | Candidates generated | 25230 single + 332 stitched; 237 after NMS |
-| Runtime on the full pack (this script, one run) | 448 ms |
+| Runtime on the full pack (this script, one run) | 442 ms |
 | Diversity cap | 0 candidates skipped; turning it off changes 0 of the top 10 |
 
 ### Labels by band
@@ -83,20 +83,20 @@ Ranks are v2 ranks among the 237 NMS survivors unless marked. "S" marks a standa
 
 | # | Candidate | Picked | Why it is wrong | What would fix it |
 |---|---|---|---|---|
-| 1 | `E34-035.30-066.70` | Rank 4, total 0.635 (hook 0.81, cliff 0.30) | Courtroom noise scored as a hook, and a routine question scored as a cliffhanger. Any `?` earns the same credit. | Weigh what the question asks, or let the LLM layer judge it. |
+| 1 | `E34-035.30-066.70` | Rank 4, total 0.635 (hook 0.81, cliff 0.30) | A loud sound with no story weight scored as a hook, and a routine question scored as a cliffhanger. Any `?` earns the same credit. | Weigh what the question asks, or let the LLM layer judge it. |
 | 2 | `E28-061.60-097.40` | Rank 6, total 0.611 (hook 0.40) | The hook cue is one word inside a dull sentence. The physical beat arrives 9 s in. The right start is about 9 s later. | Slide the start toward the strongest event, and need more than one word for a hook. |
-| 3 S | `E13-074.50-118.88` | Rank 9, standalone 0.73 | Nobody new can tell why she crawls: the cause is in an earlier scene. The name and speaker counts read as "clear". | Check that the reason for the action sits inside the clip. |
+| 3 S | `E13-074.50-118.88` | Rank 9, standalone 0.73 | Nobody new can tell why the character is doing this: the cause is in an earlier scene. The name and speaker counts read as "clear". | Check that the reason for the action sits inside the clip. |
 | 4 S | `E30-033.40-064.30` | Rank 10, standalone 0.62 | Only supporting characters appear. A speaker labelled by role passes the "introduced" test. | Require a lead, by screen share across the show. |
-| 5 S | `E45-060.00-088.20` | False negative: rank 178, standalone 0.48, cliff 0 | A self-explaining public reveal, penalised for being late and for two unintroduced names. Doors bursting at the cut got no cliffhanger credit. | Add an interruption cue. Treat a line that states a relationship as introducing the person. |
+| 5 S | `E45-060.00-088.20` | False negative: rank 178, standalone 0.48, cliff 0 | A self-explaining reveal, penalised for being late and for two unintroduced names. A sudden interruption at the cut got no cliffhanger credit. | Add an interruption cue. Treat a line that states a relationship as introducing the person. |
 | 6 S | `E38-062.80-087.91` | v1 rank 8, standalone 0.72 | "Name spoken aloud" earned a reward, but a name means nothing to a newcomer unless the clip shows who it is. v2 dropped it to rank 90 by chance of the warm-ending fix, not by fixing this. | Reward a name only when said to or about someone on screen. |
 | 7 S | `E43-010.50-030.00+E45-049.00-074.00` | Rank 18 | Two climaxes stitched. It shares a speaker, so it passes the join check, yet it is unreadable to a newcomer. | Shared speaker is too weak a test. Have the LLM judge joins. |
-| 8 | `E18-039.50-076.80` | False negative: rank 127, cliff 0 | She runs back into a fire and the clip cuts before the outcome. No cue exists for physical danger at the cut. | Add a danger cue group for actions in the final seconds. |
+| 8 | `E18-039.50-076.80` | False negative: rank 127, cliff 0 | A character runs into physical danger and the clip cuts before the outcome. No cue exists for physical danger at the cut. | Add a danger cue group for actions in the final seconds. |
 | 9 | `E12-060.80-087.21` | False negative: v1 rank 183, v2 rank 88 | The stakes are stated outright, but a word-boundary bug missed "freezes". The fix helped, yet its soft shouted opening still holds it down. | Partly fixed. Treat a line stating the stakes as a hook. |
 | 10 | `E04-034.00-083.80` | Rank 52, standalone 0.93 | The show's premise beat, and an editor would want a version of it. The tool has no idea of "premise". | Use the logline to find its key moment, then search around it. |
 | 11 | `E36-160.50-200.75` | v1 rank 2 | The clip opened mid-sentence. It passed every invariant. | Fixed in v2: continuation lines cannot start a clip. |
-| 12 | `E16-023.00-040.80+E16-060.00-083.19` | v1 rank 4 | The sound cue contains the word "cliffhanger", but the scene ends on a tender look. | Fixed in v2 for this case. The word in a sound cue is still over-trusted. |
+| 12 | `E16-023.00-040.80+E16-060.00-083.19` | v1 rank 4 | The sound cue contains the word "cliffhanger", but the scene ends on a tender moment. | Fixed in v2 for this case. The word in a sound cue is still over-trusted. |
 | 13 | Upper band, 7 labelled | 0 of 7 labelled post | Moderate scores come from one cue each, and one cue is not enough to make a promo. | Require a hook and a cliffhanger cue, rather than a weighted sum. |
 
 ## How the labels stay private
 
-`docs/labels.csv` and `docs/private/` quote the show, so they are git-ignored. A copy goes in the raw-outputs folder, which goes only to the Kuku reviewers.
+`docs/labels.csv` and `docs/private/` quote the show, so they are git-ignored. They are also left out of the raw outputs, because the brief wants links that open for anyone who has them. This file therefore carries IDs and neutral descriptions only. Anyone with the pack can see each failure by opening its candidate ID.
