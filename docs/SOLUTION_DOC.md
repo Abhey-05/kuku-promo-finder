@@ -35,7 +35,7 @@ Rules do the finding because they are free, repeatable, and explain themselves. 
 
 ## 5. Scale to every show
 
-The rules cost nothing: the full pack (102.7 minutes of screen time) ran in under 0.5 s on a laptop and 0.6 s in a browser. The model step sends a fixed top 30, so its cost does not grow with episodes. The real prompt for this pack is 41,554 characters, about 10,400 tokens. With an assumed 1,500 output tokens, at Gemini 2.5 Flash list prices (/bin/zsh.30 in, .50 out per million): 10,400 × $0.30/M + 1,500 × $2.50/M ≈ **$0.007 per show**, or about $0.70 for 100 shows. This is a calculation, not a measured bill, because no key was available and the LLM layer ran only against mocks. A human stays in the loop: the editor reviews the top 10 and thumbs each one, and those labels feed tuning.
+The rules cost nothing: the full pack (102.7 minutes of screen time) ran in under 0.5 s on a laptop and 0.6 s in a browser. The model step sends a fixed top 30, so its cost does not grow with episodes. The real prompt for this pack is 41,554 characters, about 10,400 tokens. With an assumed 1,500 output tokens, at Gemini 2.5 Flash list prices ($0.30 in, $2.50 out per million): 10,400 × $0.30/M + 1,500 × $2.50/M ≈ **$0.007 per show**, or about $0.70 for 100 shows. This is a calculation, not a measured bill, because no key was available and the LLM layer ran only against mocks. A human stays in the loop: the editor reviews the top 10 and thumbs each one, and those labels feed tuning.
 
 ## 6. How I know it's good
 
