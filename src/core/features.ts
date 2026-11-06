@@ -100,7 +100,7 @@ export function cliffScore(ep: Episode, end: number): { score: number; cues: Cue
         if (c) cues.push(c);
       }
     }
-    if (e.type === 'SFX' || e.type === 'CAMERA') {
+    if (e.type !== 'DIALOGUE') {
       const c = matchGroup('cliffhanger', RESOLUTION.tone, e, ep.number);
       if (c) neg.push(c);
     }
@@ -122,7 +122,7 @@ export function cliffScore(ep: Episode, end: number): { score: number; cues: Cue
   // A hard ending only counts over something unresolved.
   if (neg.length === 0) {
     for (const e of tail) {
-      if (e.type !== 'CAMERA') continue;
+      if (e.type === 'DIALOGUE') continue;
       const c = matchGroup('cliffhanger', CLIFF_GROUPS.camera, e, ep.number);
       if (c) cues.push(c);
     }

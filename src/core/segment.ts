@@ -1,4 +1,5 @@
 import type { Entry, Episode, Segment } from './schema';
+import { CONTINUATION_START } from './lexicon';
 import { round2, formatTimestamp } from './parse';
 
 export const MIN_PROMO_S = 20;
@@ -15,6 +16,7 @@ function insideDialogue(entries: Entry[], t: number): boolean {
 export function candidateStarts(ep: Episode): number[] {
   const starts = ep.entries
     .filter((e) => (e.type === 'DIALOGUE' || e.type === 'ACTION') && e.end >= e.start)
+    .filter((e) => !(e.type === 'DIALOGUE' && CONTINUATION_START.test(e.text)))
     .map((e) => e.start)
     .filter((t) => !insideDialogue(ep.entries, t));
   return [...new Set(starts)].sort((a, b) => a - b);

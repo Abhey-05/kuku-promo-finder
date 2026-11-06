@@ -14,3 +14,4 @@ Numbered in the order they were made. The brief says to assume rather than ask.
 10. **"Cliffhanger" written in a sound cue is a strong signal.** Writers mark these beats. A new show without that word will lean on the other cues, so scores may run lower.
 11. **The join penalty is 0.08, not 0.05.** At 0.05, stitched promos took 3 of the top 4 places, which goes against "usually one continuous stretch".
 12. **NMS also drops a promo that shares an exact opening or ending with a better one.** Overlap under 50% can still mean the same hook posted twice, once a stitched promo is allowed.
+13. **A clip cannot start on a continuation line** (one opening with an ellipsis, a dash or a lower-case letter). The first evaluation found clips that began mid-sentence.

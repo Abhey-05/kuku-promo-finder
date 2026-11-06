@@ -65,7 +65,7 @@ export const CLIFF_GROUPS = {
   /** Only counted when the last line is not a resolved one. */
   camera: {
     group: 'hard ending',
-    pattern: 'freeze|hard cut|cut to black|smash cut|snap to black|cuts? to black',
+    pattern: 'freez(?:e|es|ing)|hard cut|smash cut|snap to black|cuts? to black|cutting to black',
     weight: 0.4,
   },
   threat: {
@@ -83,8 +83,11 @@ export const OPEN_LINE_WEIGHTS = { question: 0.3, trailing: 0.3 };
 /** A sign the story has settled. Each hit is subtracted from the cliffhanger score. */
 export const RESOLUTION = {
   dialogue: { group: 'resolved line', pattern: 'finally|forgive|together|agreed|happily|kiss|thank you|i love you', weight: -0.3 },
-  tone: { group: 'warm ending', pattern: 'warm|gentle|tender|peaceful|soft(?:ly)? fad|fading out|fades? out|embrace|kiss', weight: -0.3 },
+  tone: { group: 'warm ending', pattern: 'warm|gentle|tender|tenderly|peaceful|soft(?:ly)? fad|fading out|fades? out|embrace|kiss|unspoken bond|safely', weight: -0.3 },
 } satisfies Record<string, CueGroup>;
+
+/** A line that opens like this continues the one before, so a clip cannot start on it. */
+export const CONTINUATION_START = /^["“]?\s*(?:\.\.\.|…|—|–|[a-z])/;
 
 export const STANDALONE = {
   /** A first line that opens on a pronoun leaves a newcomer asking "who?". */

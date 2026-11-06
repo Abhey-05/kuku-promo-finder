@@ -96,6 +96,29 @@ describe('segmentation', () => {
   });
 });
 
+describe('fixes from the failure log', () => {
+  it('does not start a clip on the second half of a sentence', () => {
+    const { episode } = parseEpisode('e', script(
+      entry('NORA', '00:01.00', '00:02.00', '"...and then he left."') + '\n' +
+      entry('NORA', '00:03.00', '00:04.00', '"then I ran."') + '\n' +
+      entry('NORA', '00:05.00', '00:06.00', '"I ran."'),
+    ));
+    expect(candidateStarts(episode)).toEqual([5]);
+  });
+  it('reads a freeze written in an action entry, in any verb form', () => {
+    const { episode } = parseEpisode('e', script(entry('ACTION', '00:20.00', '00:22.00', 'Nora stares as the scene freezes on her face.')));
+    expect(cliffScore(episode, 22).cues.map((c) => c.group)).toContain('hard ending');
+  });
+  it('treats a tender action as resolution even when the sound cue says cliffhanger', () => {
+    const { episode } = parseEpisode('e', script(
+      entry('ACTION', '00:20.00', '00:22.00', 'They look at each other, an unspoken bond forming.') + '\n' +
+      entry('SOUND FX', '00:22.00', '00:24.00', 'Cello swelling to a dramatic cliffhanger hold.'),
+    ));
+    const plain = parseEpisode('e', script(entry('SOUND FX', '00:22.00', '00:24.00', 'Cello swelling to a dramatic cliffhanger hold.'))).episode;
+    expect(cliffScore(episode, 24).score).toBeLessThan(cliffScore(plain, 24).score);
+  });
+});
+
 const fake = (id: string, episode: number, start: number, end: number, total: number) =>
   ({ id, segments: [{ episode, start, end }], total_duration_s: end - start, cues: [], flags: [], scores: { total } }) as unknown as Candidate;
 

@@ -13,3 +13,4 @@ labels.csv
 .vercel
 .DS_Store
 coverage/
+docs/labels.csv.template
