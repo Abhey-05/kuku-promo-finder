@@ -14,3 +14,6 @@ labels.csv
 .DS_Store
 coverage/
 docs/labels.csv.template
+node_modules
+node_modules.nosync/
+qa/

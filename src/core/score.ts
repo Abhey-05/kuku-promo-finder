@@ -164,6 +164,11 @@ export function generateCandidates(episodes: Episode[], weights: Weights): { sin
   return { singles, multi, ctx };
 }
 
+/** Scores any cut the same way the generator does. Used to rescore a cut the model tightened. */
+export function scoreSegments(segments: Segment[], ctx: StandaloneContext, weights: Weights): Candidate {
+  return score(segments, new ScoreCache(ctx.episodes), ctx, weights);
+}
+
 /** Verbatim, single-line form of a line, for quoting in prose. */
 export function quoteOf(cue: Cue): string {
   const firstLine = cue.text.split('\n')[0];

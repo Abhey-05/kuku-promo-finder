@@ -146,10 +146,11 @@ function invariants(name: string, load: () => InputFile[]) {
   describe(`invariants: ${name}`, () => {
     let r: RunResult;
     let files: InputFile[];
+    // Generous: on a synced folder (iCloud) the first read of the pack can be slow.
     beforeAll(async () => {
       files = load();
       r = await runPipeline(files, DEFAULT_CONFIG);
-    });
+    }, 120_000);
     const source = () => new Map(r.episodes.map((e) => [e.number, e]));
 
     it('produces promos', () => expect(r.promos.length).toBeGreaterThan(0));

@@ -1,23 +1,30 @@
 import type { LlmOptions } from '../schema';
-import type { CallResult } from './interface';
+import { LlmError, postJson, type CallResult, type Message } from './http';
 
-/** Covers Groq, OpenRouter, Ollama and anything else that speaks /chat/completions. */
-export async function openAiCompatibleCall(prompt: string, opts: LlmOptions): Promise<CallResult> {
-  if (!opts.baseUrl) throw new Error('A base URL is required');
-  const res = await fetch(`${opts.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(opts.apiKey ? { Authorization: `Bearer ${opts.apiKey}` } : {}),
-    },
-    body: JSON.stringify({ model: opts.model, temperature: 0, messages: [{ role: 'user', content: prompt }] }),
-    signal: opts.signal,
-  });
-  if (!res.ok) throw new Error(`Provider HTTP ${res.status}`);
-  const data = await res.json();
+type ChatReply = {
+  model?: string;
+  choices?: { message?: { content?: string | null } }[];
+  usage?: { prompt_tokens?: number; completion_tokens?: number };
+};
+
+/** Any /chat/completions endpoint. Shared by the OpenAI adapter. */
+export async function chatCompletions(baseUrl: string, messages: Message[], opts: LlmOptions, extra: Record<string, unknown> = {}): Promise<CallResult> {
+  const data = (await postJson(
+    `${baseUrl.replace(/\/+$/, '')}/chat/completions`,
+    opts.apiKey ? { Authorization: `Bearer ${opts.apiKey}` } : {},
+    { model: opts.model, temperature: opts.temperature ?? 0, messages, ...extra },
+    opts,
+  )) as ChatReply;
   return {
-    text: data?.choices?.[0]?.message?.content ?? '',
-    inputTokens: data?.usage?.prompt_tokens,
-    outputTokens: data?.usage?.completion_tokens,
+    text: data.choices?.[0]?.message?.content ?? '',
+    model: data.model,
+    inputTokens: data.usage?.prompt_tokens,
+    outputTokens: data.usage?.completion_tokens,
   };
+}
+
+/** Covers Groq, OpenRouter, Together, local Ollama and any endpoint Kuku provides. */
+export async function openAiCompatibleCall(messages: Message[], opts: LlmOptions): Promise<CallResult> {
+  if (!opts.baseUrl) throw new LlmError('config', 'Enter a base URL, for example https://api.groq.com/openai/v1.');
+  return chatCompletions(opts.baseUrl, messages, opts);
 }

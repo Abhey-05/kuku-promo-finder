@@ -1,16 +1,12 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import JSZip from 'jszip';
-import { DEFAULT_CONFIG } from '../core/config';
 import { buildOutputs } from '../core/outputs';
 import { describeSegments } from '../core/segment';
 import { runPipeline } from '../core/pipeline';
-import type { Config, InputFile, ProviderName } from '../core/schema';
-
-function arg(name: string): string | undefined {
-  const i = process.argv.indexOf(`--${name}`);
-  return i >= 0 ? process.argv[i + 1] : undefined;
-}
+import { testConnection } from '../core/llm/interface';
+import type { InputFile } from '../core/schema';
+import { readCli, USAGE } from './config';
 
 function walk(dir: string): string[] {
   return readdirSync(dir).flatMap((n) => {
@@ -35,27 +31,23 @@ async function readInput(path: string): Promise<InputFile[]> {
 }
 
 async function main() {
-  const input = arg('input');
-  const out = arg('out');
-  if (!input || !out) {
-    console.error('Usage: npm run cli -- --input <folder-or-zip> --out runs/<label> [--provider none|gemini|openai-compatible] [--top 10] [--weights weights.json] [--max-per-episode 2] [--model name] [--base-url url]');
+  const cli = readCli(process.argv.slice(2), process.env);
+  if (cli.errors.length) {
+    console.error(cli.errors.map((e) => `Error: ${e}`).join('\n') + `\n\n${USAGE}`);
     process.exit(2);
   }
-  const cap = arg('max-per-episode');
-  const weightsPath = arg('weights');
-  const config: Config = {
-    ...DEFAULT_CONFIG,
-    label: basename(out),
-    provider: (arg('provider') ?? 'none') as ProviderName,
-    top: Number(arg('top') ?? DEFAULT_CONFIG.top),
-    maxPerEpisode: cap === undefined ? DEFAULT_CONFIG.maxPerEpisode : cap === 'off' ? null : Number(cap),
-    weights: weightsPath ? JSON.parse(readFileSync(weightsPath, 'utf8')) : DEFAULT_CONFIG.weights,
-  };
-  const files = await readInput(input);
-  const result = await runPipeline(files, config, {
-    apiKey: process.env.LLM_API_KEY,
-    model: arg('model'),
-    baseUrl: arg('base-url'),
+  const { config, llm } = cli;
+  if (cli.testConnection) {
+    const r = await testConnection({ ...llm, provider: config.provider });
+    console.log(r.ok ? `OK: ${config.provider}/${r.model} answered in ${r.latency_ms} ms` : `Failed (${r.kind}): ${r.message}`);
+    process.exit(r.ok ? 0 : 1);
+  }
+  const files = await readInput(cli.input!);
+  const out = cli.out!;
+  const result = await runPipeline(files, config, llm, {
+    onStage: (s, info) => {
+      if (config.provider !== 'none' && info?.total) process.stderr.write(`  ${s} ${info.done}/${info.total}\n`);
+    },
   });
   const root = resolve('.');
   const outputs = buildOutputs(result, {
@@ -66,10 +58,16 @@ async function main() {
   for (const [name, content] of Object.entries(outputs)) writeFileSync(join(out, name), content);
 
   const c = result.log.counts;
+  const t = result.trace;
   console.log(`Episodes parsed: ${c.episodes}/${c.files}  Entries: ${c.entries}  Unparsed lines: ${result.parseReport.totals.unparsed_lines}`);
   console.log(`Candidates: ${c.single_candidates} single, ${c.multi_candidates} stitched, ${c.after_nms} after NMS`);
-  console.log(`Time: ${Object.values(result.log.timings_ms).reduce((a, b) => a + b, 0)} ms  Provider: ${config.provider}${result.log.llm.fallback_used ? ' (fell back to heuristic)' : ''}`);
-  for (const p of result.promos) console.log(`${String(p.rank).padStart(2)}. ${p.scores.total.toFixed(3)}  ${p.total_duration_s.toFixed(1).padStart(4)}s  ${describeSegments(p.segments)}`);
+  console.log(`Time: ${Object.values(result.log.timings_ms).reduce((a, b) => a + b, 0)} ms  Mode: ${t.mode === 'ai' ? `AI ${t.provider}/${t.model}` : 'heuristic only'}`);
+  if (t.mode === 'ai') {
+    const v = t.stages.find((s) => s.stage === 'verify');
+    console.log(`Calls: ${t.calls}/${t.call_cap}  Tokens: ${t.input_tokens ?? '?'} in, ${t.output_tokens ?? '?'} out  Cost: ${t.estimated_cost_usd === null ? 'unknown for this model' : `$${t.estimated_cost_usd}`}  Fallbacks: ${v?.fallbacks.length ?? 0}`);
+    for (const n of result.log.llm.notes) console.log(`  ${n}`);
+  }
+  for (const p of result.promos) console.log(`${String(p.rank).padStart(2)}. ${p.final_score.toFixed(3)}  ${p.total_duration_s.toFixed(1).padStart(4)}s  ${describeSegments(p.segments)}${p.flags.includes('llm_fallback') ? '  [llm_fallback]' : ''}`);
   console.log(`Wrote ${out}`);
 }
 

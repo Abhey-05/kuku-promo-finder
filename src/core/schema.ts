@@ -1,5 +1,3 @@
-import { z } from 'zod';
-
 export type EntryType = 'CAMERA' | 'ACTION' | 'SFX' | 'DIALOGUE';
 
 export interface Entry {
@@ -117,21 +115,37 @@ export interface Weights {
   joinPenalty: number;
 }
 
+/** Settings of the LLM stages. Ignored when the provider is none. */
+export interface AgentSettings {
+  /** Weight of the model's score in the final rank: final = alpha * llm + (1 - alpha) * heuristic. */
+  alpha: number;
+  /** How many heuristic survivors go to the judge. */
+  maxCandidates: number;
+  /** How many of the best judged candidates the model may re-cut. */
+  refineTop: number;
+  /** Candidates per judge call. */
+  batchSize: number;
+  /** Hard limit on model calls in one run, retries included. */
+  callCap: number;
+}
+
 export interface Config {
   weights: Weights;
   top: number;
   maxPerEpisode: number | null;
   provider: ProviderName;
+  agent: AgentSettings;
   label: string;
 }
 
-export type ProviderName = 'none' | 'gemini' | 'openai-compatible';
+export type ProviderName = 'none' | 'anthropic' | 'openai' | 'gemini' | 'openai-compatible';
 
 export interface LlmOptions {
   provider: ProviderName;
   apiKey?: string;
   model?: string;
   baseUrl?: string;
+  temperature?: number;
   signal?: AbortSignal;
 }
 
@@ -160,6 +174,14 @@ export interface Promo {
   why: string;
   scores: Features;
   judge: { source: 'heuristic' | 'llm'; reason?: string };
+  /** The heuristic total, kept next to the blended score for comparison. */
+  heuristic_score: number;
+  /** The model's ratings, when the judge stage accepted them. */
+  ai?: { hook: number; cliffhanger: number; standalone: number; score: number; reason: string };
+  /** alpha * ai.score + (1 - alpha) * heuristic_score, or the heuristic score in heuristic mode. */
+  final_score: number;
+  /** The heuristic cut, when the refine stage moved the boundaries. */
+  refined_from?: Segment[];
   flags: string[];
   cues: Cue[];
 }
@@ -171,38 +193,50 @@ export interface DiversityEvent {
   note: string;
 }
 
-/** What the model sees for one candidate. Lines are verbatim, with timestamps. */
-export interface CandidateSummary {
-  id: string;
-  lines: string[];
-  features: { hook: number; cliffhanger: number; standalone: number; duration: number; total: number };
-  cues: string[];
+export type TraceStageName = 'shortlist' | 'judge' | 'refine' | 'writeup' | 'verify' | 'rank';
+
+export interface TraceRejection {
+  /** Candidate or promo ID, when the problem is tied to one. */
+  item?: string;
+  reason: string;
+  /** 1 for the first reply, 2 for the retry. */
+  attempt: number;
 }
 
-export const JudgementSchema = z.object({
-  id: z.string(),
-  hook: z.number().min(1).max(5),
-  cliffhanger: z.number().min(1).max(5),
-  standalone: z.number().min(1).max(5),
-});
-
-export const LlmResponseSchema = z.object({
-  ratings: z.array(JudgementSchema),
-  top: z
-    .array(z.object({ id: z.string(), reason: z.string(), quote: z.string().optional() }))
-    .min(1),
-});
-
-export type LlmResponse = z.infer<typeof LlmResponseSchema>;
-
-export interface Judgement {
-  id: string;
-  rank: number;
-  source: 'heuristic' | 'llm';
-  reason?: string;
-  ratings?: { hook: number; cliffhanger: number; standalone: number };
+export interface TraceStage {
+  stage: TraceStageName;
+  model: string | null;
+  items_in: number;
+  items_out: number;
+  calls: number;
+  retries: number;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  latency_ms: number;
+  rejected: TraceRejection[];
+  /** IDs that kept the heuristic result because the model's output failed twice. */
+  fallbacks: string[];
+  notes: string[];
 }
 
+/** Every LLM stage of one run. Never holds the API key. */
+export interface AgentTrace {
+  mode: 'heuristic' | 'ai';
+  provider: ProviderName;
+  model: string | null;
+  base_url: string | null;
+  temperature: number;
+  alpha: number;
+  call_cap: number;
+  calls: number;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  /** Null when the model has no price in the table. */
+  estimated_cost_usd: number | null;
+  stages: TraceStage[];
+}
+
+/** Short form of the trace for the run log and the CLI. */
 export interface LlmLog {
   provider: ProviderName;
   model: string | null;
@@ -242,11 +276,12 @@ export interface RunResult {
   heuristicPromos: Promo[];
   /** The next survivors after the top N, so an editor can label beyond the shortlist. */
   runnersUp: Promo[];
+  trace: AgentTrace;
   log: RunLog;
 }
 
 /** What the web worker sends back. Leaves out the 25k candidates; they stay in the zip. */
-export type RunView = Pick<RunResult, 'parseReport' | 'promos' | 'heuristicPromos' | 'runnersUp' | 'log'>;
+export type RunView = Pick<RunResult, 'parseReport' | 'promos' | 'heuristicPromos' | 'runnersUp' | 'trace' | 'log'>;
 
 export interface InputFile {
   name: string;

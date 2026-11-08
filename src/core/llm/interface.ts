@@ -1,122 +1,100 @@
-import { LlmResponseSchema, type CandidateSummary, type Judgement, type LlmLog, type LlmOptions } from '../schema';
-import { buildPrompt } from './prompt';
-import { noneRerank } from './none';
+import type { LlmOptions, ProviderName } from '../schema';
+import { anthropicCall } from './anthropic';
 import { geminiCall } from './gemini';
+import { LlmError, scrub, type ModelCall } from './http';
+import { openAiCall } from './openai';
 import { openAiCompatibleCall } from './openai-compatible';
 
-export interface CallResult {
-  text: string;
-  inputTokens?: number;
-  outputTokens?: number;
-}
+export type RemoteProvider = Exclude<ProviderName, 'none'>;
 
-/** One adapter is one function: prompt in, text out. Swapping models touches nothing else. */
-export type ModelCall = (prompt: string, opts: LlmOptions) => Promise<CallResult>;
-
-const ADAPTERS: Record<'gemini' | 'openai-compatible', ModelCall> = {
+export const ADAPTERS: Record<RemoteProvider, ModelCall> = {
+  anthropic: anthropicCall,
+  openai: openAiCall,
   gemini: geminiCall,
   'openai-compatible': openAiCompatibleCall,
 };
 
-export const DEFAULT_MODELS: Record<string, string> = {
-  gemini: 'gemini-2.5-flash',
-  'openai-compatible': 'llama-3.3-70b-versatile',
+export interface ProviderInfo {
+  label: string;
+  defaultModel: string;
+  /** Suggestions only. The model field takes any name. */
+  suggested: string[];
+  needsKey: boolean;
+  needsBaseUrl: boolean;
+  baseUrlHint?: string;
+  /** What a browser can do with this provider, as checked in docs/QA.md. */
+  browser: string;
+}
+
+export const PROVIDERS: Record<ProviderName, ProviderInfo> = {
+  none: { label: 'Heuristic only (no key)', defaultModel: '', suggested: [], needsKey: false, needsBaseUrl: false, browser: '' },
+  anthropic: {
+    label: 'Anthropic (Claude)',
+    defaultModel: 'claude-haiku-5-5',
+    suggested: ['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5'],
+    needsKey: true,
+    needsBaseUrl: false,
+    browser: 'Browser calls allowed with the direct-access header.',
+  },
+  openai: {
+    label: 'OpenAI',
+    defaultModel: 'gpt-4.1-mini',
+    suggested: ['gpt-4.1-mini', 'gpt-4.1', 'gpt-4o-mini'],
+    needsKey: true,
+    needsBaseUrl: false,
+    browser: 'Browser calls allowed.',
+  },
+  gemini: {
+    label: 'Google Gemini',
+    defaultModel: 'gemini-2.5-flash',
+    suggested: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite'],
+    needsKey: true,
+    needsBaseUrl: false,
+    browser: 'Browser calls allowed.',
+  },
+  'openai-compatible': {
+    label: 'OpenAI-compatible (Groq, OpenRouter, Together, Ollama, Kuku)',
+    defaultModel: 'llama-3.3-70b-versatile',
+    suggested: ['llama-3.3-70b-versatile', 'openai/gpt-oss-120b', 'qwen2.5:7b'],
+    needsKey: false,
+    needsBaseUrl: true,
+    baseUrlHint: 'https://api.groq.com/openai/v1',
+    browser: 'Depends on the endpoint. Groq and OpenRouter allow browser calls; local Ollama needs OLLAMA_ORIGINS set. If the browser is blocked, use the CLI.',
+  },
 };
 
-function stripFence(text: string): string {
-  return text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+/** USD per million tokens [input, output]. Only prices we have checked; others report tokens only. */
+const PRICES: Record<string, [number, number]> = {
+  'gemini-2.5-flash': [0.3, 2.5],
+};
+
+export function estimateCost(model: string | null, input: number | null, output: number | null): number | null {
+  const p = model ? PRICES[model] : undefined;
+  if (!p || input === null || output === null) return null;
+  return Math.round(((input * p[0] + output * p[1]) / 1e6) * 1e6) / 1e6;
 }
 
-const normalise = (s: string) => s.replace(/\s+/g, ' ').trim();
+/** Fills in the default model. Leaves the key as given. */
+export function resolveOptions(opts: LlmOptions): LlmOptions {
+  if (opts.provider === 'none') return opts;
+  return { ...opts, model: opts.model?.trim() || PROVIDERS[opts.provider].defaultModel, baseUrl: opts.baseUrl?.trim() || undefined, temperature: opts.temperature ?? 0 };
+}
 
-/**
- * Checks a raw model reply. Rejects unknown IDs and quotes that are not verbatim.
- * Returns an error string rather than throwing, so the caller can fall back.
- */
-export function validateResponse(
-  raw: string,
-  candidates: CandidateSummary[],
-): { ok: true; judgements: Judgement[] } | { ok: false; error: string } {
-  let parsed: unknown;
+export type ConnectionResult =
+  | { ok: true; model: string; latency_ms: number; reply: string }
+  | { ok: false; kind: string; message: string; latency_ms: number };
+
+/** Sends one tiny request. Reports the model the provider says it used, or the error in plain words. */
+export async function testConnection(raw: LlmOptions, call?: ModelCall): Promise<ConnectionResult> {
+  const t0 = Date.now();
+  if (raw.provider === 'none') return { ok: false, kind: 'config', message: 'Pick a provider first.', latency_ms: 0 };
+  const opts = resolveOptions(raw);
   try {
-    parsed = JSON.parse(stripFence(raw));
-  } catch {
-    return { ok: false, error: 'reply is not JSON' };
+    const res = await (call ?? ADAPTERS[raw.provider])([{ role: 'user', content: 'Reply with the JSON {"ok":true} and nothing else.' }], opts);
+    return { ok: true, model: res.model ?? opts.model ?? '', latency_ms: Date.now() - t0, reply: res.text.slice(0, 80) };
+  } catch (err) {
+    const kind = err instanceof LlmError ? err.kind : 'other';
+    const message = err instanceof Error ? scrub(err.message, opts.apiKey) : 'Unknown error.';
+    return { ok: false, kind, message, latency_ms: Date.now() - t0 };
   }
-  const result = LlmResponseSchema.safeParse(parsed);
-  if (!result.success) return { ok: false, error: `schema: ${result.error.issues[0]?.message ?? 'invalid'}` };
-
-  const byId = new Map(candidates.map((c) => [c.id, c]));
-  const ratings = new Map(result.data.ratings.map((r) => [r.id, r]));
-  const seen = new Set<string>();
-  const judgements: Judgement[] = [];
-  for (const [i, t] of result.data.top.entries()) {
-    const c = byId.get(t.id);
-    if (!c) return { ok: false, error: `unknown id ${t.id}` };
-    if (seen.has(t.id)) return { ok: false, error: `duplicate id ${t.id}` };
-    seen.add(t.id);
-    const source = normalise(c.lines.join('\n'));
-    // Anything in straight or curly double quotes inside the reason counts as a quote too.
-    const quoted = [t.quote, ...[...t.reason.matchAll(/["“]([^"”]+)["”]/g)].map((m) => m[1])].filter(Boolean) as string[];
-    const bad = quoted.find((q) => !source.includes(normalise(q)));
-    if (bad !== undefined) return { ok: false, error: `quote not verbatim for ${t.id}` };
-    const r = ratings.get(t.id);
-    judgements.push({
-      id: t.id,
-      rank: i + 1,
-      source: 'llm',
-      reason: t.reason,
-      ratings: r ? { hook: r.hook, cliffhanger: r.cliffhanger, standalone: r.standalone } : undefined,
-    });
-  }
-  return { ok: true, judgements };
-}
-
-export function emptyLlmLog(opts: LlmOptions): LlmLog {
-  return {
-    provider: opts.provider,
-    model: opts.provider === 'none' ? null : opts.model ?? DEFAULT_MODELS[opts.provider] ?? null,
-    calls: 0,
-    input_tokens: null,
-    output_tokens: null,
-    failures: 0,
-    fallback_used: false,
-    notes: [],
-  };
-}
-
-/**
- * The single entry point for ranking by model. Never rejects: any failure logs and
- * falls back to the heuristic order, so a bad key or bad reply cannot lose a run.
- */
-export async function rerank(
-  candidates: CandidateSummary[],
-  opts: LlmOptions & { topN: number; call?: ModelCall },
-): Promise<{ judgements: Judgement[]; log: LlmLog }> {
-  const log = emptyLlmLog(opts);
-  const fallback = () => noneRerank(candidates).slice(0, opts.topN);
-  if (opts.provider === 'none') return { judgements: fallback(), log };
-
-  const call = opts.call ?? ADAPTERS[opts.provider];
-  const prompt = buildPrompt(candidates, opts.topN);
-  // One retry with a stricter reminder: a free model's bad reply is often just malformed.
-  for (const suffix of ['', '\n\nYour last reply failed validation. Reply with the JSON only, and quote only exact words.']) {
-    try {
-      log.calls++;
-      const res = await call(prompt + suffix, { ...opts, model: log.model ?? undefined });
-      if (res.inputTokens !== undefined) log.input_tokens = (log.input_tokens ?? 0) + res.inputTokens;
-      if (res.outputTokens !== undefined) log.output_tokens = (log.output_tokens ?? 0) + res.outputTokens;
-      const checked = validateResponse(res.text, candidates);
-      if (checked.ok) return { judgements: checked.judgements, log };
-      log.failures++;
-      log.notes.push(checked.error);
-    } catch (err) {
-      if (opts.signal?.aborted) throw err;
-      log.failures++;
-      // Messages only, so a key inside a URL or header can never reach the run log.
-      log.notes.push(`call failed: ${err instanceof Error ? err.message.slice(0, 200) : 'unknown error'}`);
-    }
-  }
-  log.fallback_used = true;
-  return { judgements: fallback(), log };
 }

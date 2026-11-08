@@ -6,7 +6,7 @@ import { quoteOf } from './score';
 const EPS = 0.005;
 
 /** Two promos on the same opening or the same ending would read as one promo posted twice. */
-function sharesEdge(a: Segment[], b: Segment[]): boolean {
+export function sharesEdge(a: Segment[], b: Segment[]): boolean {
   const [af, bf] = [a[0], b[0]];
   const [al, bl] = [a[a.length - 1], b[b.length - 1]];
   return (af.episode === bf.episode && af.start === bf.start) || (al.episode === bl.episode && al.end === bl.end);
@@ -129,6 +129,8 @@ export function toPromo(c: Candidate, rank: number, heuristicRank: number, episo
     why: explain(c),
     scores: c.scores,
     judge: { source: 'heuristic' },
+    heuristic_score: c.scores.total,
+    final_score: c.scores.total,
     flags: c.flags,
     cues: c.cues,
   };
