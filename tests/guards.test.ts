@@ -117,3 +117,20 @@ describe('identity', () => {
     expect(hits).toEqual([]);
   }, 120_000);
 });
+
+describe('request timeout', () => {
+  it('turns a hung request into a readable, retryable error', async () => {
+    const { postJson, LlmError } = await import('../src/core/llm/http');
+    const orig = globalThis.fetch;
+    globalThis.fetch = ((_u: string, init: { signal: AbortSignal }) =>
+      new Promise((_r, rej) => init.signal.addEventListener('abort', () => rej(new DOMException('aborted', 'AbortError'))))) as unknown as typeof fetch;
+    try {
+      const err = (await postJson('https://example.test/x', {}, {}, { provider: 'gemini' }, 50).catch((e: unknown) => e)) as InstanceType<typeof LlmError>;
+      expect(err).toBeInstanceOf(LlmError);
+      expect(err.retryable).toBe(true);
+      expect(err.message).toMatch(/did not answer within/);
+    } finally {
+      globalThis.fetch = orig;
+    }
+  });
+});

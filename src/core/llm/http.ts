@@ -58,19 +58,29 @@ function explain(status: number, detail: string, url: string): [LlmErrorKind, st
   return ['other', `Unexpected reply (HTTP ${status}).${tail}`];
 }
 
+/** How long one request may take before it is abandoned as a timeout (retried like a 5xx). */
+export const REQUEST_TIMEOUT_MS = 90_000;
+
 /** POSTs JSON and turns every failure into an LlmError with a readable message. */
-export async function postJson(url: string, headers: Record<string, string>, body: unknown, opts: LlmOptions): Promise<unknown> {
-  let res: Response;
-  try {
-    res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body), signal: opts.signal });
-  } catch (err) {
+export async function postJson(url: string, headers: Record<string, string>, body: unknown, opts: LlmOptions, timeoutMs = REQUEST_TIMEOUT_MS): Promise<unknown> {
+  const timer = AbortSignal.timeout(timeoutMs);
+  const signal = opts.signal ? AbortSignal.any([opts.signal, timer]) : timer;
+  const timedOut = (err: unknown) => {
     if (opts.signal?.aborted) throw err;
+    if (timer.aborted) throw new LlmError('server', `${host(url)} did not answer within ${Math.round(timeoutMs / 1000)} s.`);
+  };
+  let res: Response;
+  let raw: string;
+  try {
+    res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body), signal });
+    raw = await res.text();
+  } catch (err) {
+    timedOut(err);
     throw new LlmError(
       'network',
       `Could not reach ${host(url)}. Either you are offline, the URL is wrong, or the provider blocks requests from a browser (CORS). The command-line tool has no CORS limit.`,
     );
   }
-  const raw = await res.text();
   let data: unknown = null;
   try {
     data = raw ? JSON.parse(raw) : null;
