@@ -25,6 +25,15 @@ Vercel was not used: its CLI had no login on the build machine. Every push to `m
 
 Pushes to `main` then deploy to both Render and GitHub Pages.
 
+### If Render shows an old version
+
+On 2026-11-08 the Render site (`kuku-promo-finder.onrender.com`) still served the build from 2026-11-07, 06:05 UTC: none of the later pushes had deployed, and Render had left no deployment or status on the GitHub repo. This happens when the service was created from the public repo URL without Render's GitHub app, which turns off auto-deploy. Either fix works:
+
+1. **Connect GitHub.** In the Render dashboard, open the service, go to Settings, then Build & Deploy, and connect the repository through GitHub (install the Render app for `Abhey-05/kuku-promo-finder`). Then use Manual Deploy, then "Clear build cache & deploy".
+2. **Use a deploy hook.** In the service's Settings, copy the Deploy Hook URL. On GitHub, go to the repo's Settings, then Secrets and variables, then Actions, and add it as `RENDER_DEPLOY_HOOK`. The Pages workflow then triggers Render after the tests pass on every push. The hook is a secret: keep it out of the repo.
+
+The build itself is fine: a fresh clone runs Render's exact command (`npm ci --include=dev && npm test && npm run build`, Node 22.14.0) cleanly.
+
 ## Switch to Vercel (optional)
 
 Pages works and needs nothing further. To use Vercel instead:

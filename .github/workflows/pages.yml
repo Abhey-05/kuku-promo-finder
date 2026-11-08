@@ -28,3 +28,10 @@ jobs:
         with:
           path: dist
       - uses: actions/deploy-pages@v4
+      # Render redeploy: runs only when the RENDER_DEPLOY_HOOK repository secret is set
+      # (Render dashboard → the service → Settings → Deploy Hook). Tests have already passed above.
+      - name: Trigger Render deploy
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        if: ${{ env.HOOK != '' }}
+        run: curl -fsS -X POST "$HOOK" > /dev/null && echo "Render deploy triggered"
