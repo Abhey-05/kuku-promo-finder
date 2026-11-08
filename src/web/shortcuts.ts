@@ -9,11 +9,14 @@ export const SHORTCUTS: [string, string][] = [
   ['u', 'Go to Upload'],
   ['r', 'Run the analysis'],
   ['s', 'Open Settings'],
+  ['m', 'Open Model settings'],
+  ['c', 'Compare heuristic and AI ranking'],
   ['t', 'Toggle dark and light theme'],
   ['+ / -', 'Thumbs up / down on the selected promo'],
   ['e', 'Export the run as a zip'],
   ['g then h', 'Go to Home or Results'],
   ['g then a', 'Go to About'],
+  ['g then m', 'Go to About Me'],
 ];
 
 export type Handlers = Partial<Record<string, () => void>>;

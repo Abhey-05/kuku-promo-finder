@@ -26,6 +26,9 @@ describe.each([['light', light], ['dark', dark]] as const)('%s theme contrast (W
     ['muted', 'bg'], ['muted', 'surface'], ['muted', 'surface-2'],
     ['accent', 'bg'], ['accent', 'surface'],
     ['on-accent', 'accent'],
+    ['ok', 'surface'], ['ok', 'bg'],
+    ['danger', 'surface'], ['danger', 'bg'], ['danger', 'surface-2'],
+    ['text', 'surface-2'],
   ])('%s on %s is at least 4.5:1', (fg, bg) => {
     expect(ratio(t[fg], t[bg])).toBeGreaterThanOrEqual(4.5);
   });

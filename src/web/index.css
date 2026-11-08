@@ -12,6 +12,8 @@
   --on-accent: #ffffff;
   --ink-bar: #33312d;
   --track: #e6e2d9;
+  --ok: #15703a;
+  --danger: #b42318;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -27,6 +29,8 @@
     --on-accent: #1c1b19;
     --ink-bar: #e4e0d8;
     --track: #35322e;
+    --ok: #5fd08a;
+    --danger: #ff8a7a;
   }
 }
 
@@ -42,6 +46,8 @@
   --on-accent: #1c1b19;
   --ink-bar: #e4e0d8;
   --track: #35322e;
+  --ok: #5fd08a;
+  --danger: #ff8a7a;
 }
 
 @theme inline {
@@ -55,6 +61,8 @@
   --color-on-accent: var(--on-accent);
   --color-ink-bar: var(--ink-bar);
   --color-track: var(--track);
+  --color-ok: var(--ok);
+  --color-danger: var(--danger);
 }
 
 html {
@@ -100,12 +108,33 @@ kbd {
   background: var(--surface-2);
 }
 
+.skeleton {
+  background: var(--surface-2);
+}
+
 .tnum {
   font-variant-numeric: tabular-nums;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 @media (prefers-reduced-motion: no-preference) {
+  .skeleton {
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    50% {
+      opacity: 0.45;
+    }
+  }
+  .toast-in {
+    animation: toast-in 160ms ease-out;
+  }
+  @keyframes toast-in {
+    from {
+      transform: translateY(8px);
+      opacity: 0;
+    }
+  }
   .slide-in {
     animation: slide-in 160ms ease-out;
   }

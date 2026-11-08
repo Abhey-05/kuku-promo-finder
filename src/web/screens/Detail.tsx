@@ -1,7 +1,7 @@
 import { formatTimestamp } from '../../core/parse';
-import type { Cue, CueFeature, Promo } from '../../core/schema';
-import { describeSegments } from '../../core/segment';
-import { ScoreBars, Timeline, VoteButtons } from '../components/Promo';
+import type { AgentTrace, Cue, CueFeature, Promo } from '../../core/schema';
+import { candidateId, describeSegments } from '../../core/segment';
+import { AgentTracePanel, Flags, ScoreBars, ScoreChips, Timeline, VoteButtons } from '../components/Promo';
 import { Button, CopyButton, Empty } from '../components/ui';
 import type { Vote } from '../labels';
 
@@ -56,7 +56,28 @@ function SegmentText({ promo }: { promo: Promo }) {
   );
 }
 
-export function Detail({ promo, vote, onVote, onBack }: { promo?: Promo; vote?: Vote; onVote: (v: Vote) => void; onBack: () => void }) {
+function AiJudge({ promo }: { promo: Promo }) {
+  if (!promo.ai && promo.judge.source !== 'llm') return null;
+  return (
+    <section className="rounded-lg border border-border bg-surface p-4">
+      <h2 className="text-sm font-semibold">AI judge</h2>
+      {promo.ai ? (
+        <>
+          <p className="tnum mt-1 text-sm">
+            Hook {promo.ai.hook}/5, cliffhanger {promo.ai.cliffhanger}/5, standalone {promo.ai.standalone}/5. AI score {promo.ai.score.toFixed(3)}; heuristic {promo.heuristic_score.toFixed(3)} (rank #{promo.heuristic_rank}); final {promo.final_score.toFixed(3)}.
+          </p>
+          <p className="mt-2 text-sm"><span className="text-muted">Judge's reason:</span> {promo.ai.reason}</p>
+        </>
+      ) : (
+        <p className="mt-1 text-sm text-muted">The judge's ratings for this promo failed the checks, so it kept its heuristic score.</p>
+      )}
+      {promo.judge.reason && promo.judge.reason !== promo.ai?.reason && <p className="mt-2 text-sm"><span className="text-muted">Write-up:</span> {promo.judge.reason}</p>}
+      {promo.refined_from && <p className="mt-2 text-sm"><span className="text-muted">Re-cut by the AI from</span> <span className="tnum">{describeSegments(promo.refined_from)}</span>.</p>}
+    </section>
+  );
+}
+
+export function Detail({ promo, trace, vote, onVote, onBack }: { promo?: Promo; trace?: AgentTrace; vote?: Vote; onVote: (v: Vote) => void; onBack: () => void }) {
   if (!promo) {
     return (
       <Empty title="This promo is not in the current run">
@@ -70,7 +91,9 @@ export function Detail({ promo, vote, onVote, onBack }: { promo?: Promo; vote?: 
       <div className="flex flex-wrap items-center gap-3">
         <Button onClick={onBack} aria-label="Back to results">← Results</Button>
         <h1 className="text-xl font-semibold">Promo #{promo.rank}</h1>
-        <span className="tnum text-sm text-muted">{promo.total_duration_s.toFixed(1)} s, score {promo.scores.total.toFixed(3)}</span>
+        <span className="tnum text-sm text-muted">{promo.total_duration_s.toFixed(1)} s</span>
+        <ScoreChips promo={promo} />
+        <Flags flags={promo.flags} />
       </div>
 
       <section className="rounded-lg border border-border bg-surface p-4">
@@ -90,6 +113,8 @@ export function Detail({ promo, vote, onVote, onBack }: { promo?: Promo; vote?: 
 
       <p className="text-sm">{promo.judge.source === 'llm' && promo.judge.reason ? promo.judge.reason : promo.why}</p>
 
+      <AiJudge promo={promo} />
+
       <div className="flex flex-wrap items-center gap-2">
         <VoteButtons vote={vote} onVote={onVote} />
         <CopyButton text={JSON.stringify(json, null, 2)} label="Copy JSON" />
@@ -101,7 +126,7 @@ export function Detail({ promo, vote, onVote, onBack }: { promo?: Promo; vote?: 
           <SegmentText promo={promo} />
         </div>
         <div className="min-w-0 space-y-4 rounded-lg border border-border bg-surface p-4">
-          <h2 className="text-sm font-semibold">Score breakdown</h2>
+          <h2 className="text-sm font-semibold">Heuristic score breakdown</h2>
           <ScoreBars promo={promo} wide />
           {promo.scores.join_penalty > 0 && <p className="text-xs text-muted">Join penalty: −{promo.scores.join_penalty.toFixed(2)}</p>}
           {FEATURES.map(([f, name]) => (
@@ -113,6 +138,13 @@ export function Detail({ promo, vote, onVote, onBack }: { promo?: Promo; vote?: 
           {promo.flags.length > 0 && <p className="text-xs text-muted">Flags: {promo.flags.join(', ')}</p>}
         </div>
       </section>
+
+      {trace?.mode === 'ai' && (
+        <section className="rounded-lg border border-border bg-surface p-4">
+          <h2 className="mb-2 text-sm font-semibold">This promo in the agent trace</h2>
+          <AgentTracePanel trace={trace} onlyItem={[promo.id, ...(promo.refined_from ? [candidateId(promo.refined_from)] : [])]} />
+        </section>
+      )}
     </div>
   );
 }

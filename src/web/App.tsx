@@ -1,31 +1,34 @@
 import JSZip from 'jszip';
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
-import { DEFAULT_CONFIG, DEFAULT_WEIGHTS } from '../core/config';
-import { DEFAULT_MODELS } from '../core/llm/interface';
+import { DEFAULT_AGENT, DEFAULT_CONFIG, DEFAULT_WEIGHTS } from '../core/config';
+import { PROVIDERS } from '../core/llm/interface';
 import { parseAll } from '../core/parse';
-import type { Stage } from '../core/pipeline';
-import type { InputFile, ParseReport, RunView, Weights } from '../core/schema';
+import type { Stage, StageInfo } from '../core/pipeline';
+import type { AgentSettings, InputFile, ParseReport, RunView, Weights } from '../core/schema';
 import { Settings, type LlmSettings } from './components/Settings';
-import { Button, Overlay } from './components/ui';
+import { Button, Overlay, Toaster } from './components/ui';
 import { downloadBlob, readDrop, readFiles } from './files';
 import { labelsCsv, loadLabels, saveLabels, type Vote } from './labels';
 import { About } from './screens/About';
+import { AboutMe } from './screens/AboutMe';
 import { Detail } from './screens/Detail';
 import { Home } from './screens/Home';
-import { applyFilters, Results, type ResultFilters } from './screens/Results';
+import { aiRan, applyFilters, Results, type ResultFilters } from './screens/Results';
 import { SHORTCUTS, useShortcuts } from './shortcuts';
 import { applyTheme, initialTheme, resolved, type ThemeChoice } from './theme';
+import { toast } from './toast';
 import type { WorkerMessage, WorkerRequest } from './worker';
 
 const demoModules = import.meta.glob('../../samples/demo-show/*.txt', { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
 const demoFiles: InputFile[] = Object.entries(demoModules).map(([p, text]) => ({ name: p.split('/').pop()!, text }));
 
-type Route = { name: 'home' } | { name: 'results' } | { name: 'about' } | { name: 'promo'; id: string };
+type Route = { name: 'home' } | { name: 'results' } | { name: 'about' } | { name: 'about-me' } | { name: 'promo'; id: string };
 
 function parseHash(): Route {
   const h = decodeURIComponent(window.location.hash.replace(/^#\/?/, ''));
   if (h === 'results') return { name: 'results' };
   if (h === 'about') return { name: 'about' };
+  if (h === 'about-me') return { name: 'about-me' };
   if (h.startsWith('promo/')) return { name: 'promo', id: h.slice(6) };
   return { name: 'home' };
 }
@@ -41,19 +44,25 @@ export function App() {
   const [report, setReport] = useState<ParseReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [stage, setStage] = useState<Stage | null>(null);
+  const [stageInfo, setStageInfo] = useState<Partial<Record<Stage, StageInfo>>>({});
   const [view, setView] = useState<RunView | null>(null);
   const [outputs, setOutputs] = useState<Record<string, string> | null>(null);
   const [overlay, setOverlay] = useState<'help' | 'settings' | null>(null);
   const [selected, setSelected] = useState(0);
+  const [compare, setCompare] = useState(false);
   const [labels, setLabels] = useState<Record<string, Vote>>(loadLabels);
   const [filters, setFilters] = useState<ResultFilters>({ query: '', episode: '', minScore: 0, sort: 'rank', useLlm: true, showRunnersUp: false });
   const [theme, setThemeState] = useState<ThemeChoice>(initialTheme);
   const [weights, setWeights] = useState<Weights>(DEFAULT_WEIGHTS);
   const [cap, setCap] = useState<number | null>(DEFAULT_CONFIG.maxPerEpisode);
-  const [llm, setLlm] = useState<LlmSettings>({ provider: 'none', model: '', baseUrl: '', apiKey: '' });
+  const [agent, setAgent] = useState<AgentSettings>(DEFAULT_AGENT);
+  const [llm, setLlm] = useState<LlmSettings>({ provider: 'none', model: '', baseUrl: '', apiKey: '', temperature: 0 });
   const worker = useRef<Worker | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const running = stage !== null;
+  const aiMode = llm.provider !== 'none';
+  const modelName = llm.model || PROVIDERS[llm.provider].defaultModel;
+  const modeLabel = aiMode ? `AI: ${llm.provider}/${modelName}` : 'Heuristic only';
 
   useEffect(() => {
     const onHash = () => {
@@ -90,21 +99,40 @@ export function App() {
 
   const run = useCallback(() => {
     if (running || files.length === 0 || !report?.totals.episodes_parsed) return;
+    const info = PROVIDERS[llm.provider];
+    if (aiMode && info.needsKey && !llm.apiKey) {
+      toast(`${info.label} needs an API key. Add it in Settings, or switch to Heuristic only.`, 'error');
+      setOverlay('settings');
+      return;
+    }
+    if (aiMode && info.needsBaseUrl && !llm.baseUrl) {
+      toast('Enter a base URL for the OpenAI-compatible provider.', 'error');
+      setOverlay('settings');
+      return;
+    }
     setError(null);
+    setStageInfo({});
     setStage('parse');
+    go('/');
     worker.current?.terminate();
     const w = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
     worker.current = w;
     w.onmessage = ({ data }: MessageEvent<WorkerMessage>) => {
-      if (data.type === 'stage') setStage(data.stage);
-      else if (data.type === 'error') {
+      if (data.type === 'stage') {
+        setStage(data.stage);
+        if (data.info) setStageInfo((s) => ({ ...s, [data.stage]: { ...s[data.stage], ...data.info } }));
+      } else if (data.type === 'error') {
         setStage(null);
         setError(data.message);
+        toast(data.message, 'error');
       } else {
         setView(data.view);
         setOutputs(data.outputs);
         setStage(null);
         setSelected(0);
+        setFilters((f) => ({ ...f, useLlm: true }));
+        const fb = data.view.trace.stages.find((s) => s.stage === 'verify')?.fallbacks.length ?? 0;
+        toast(data.view.trace.mode === 'ai' ? `Done. ${data.view.trace.calls} model calls${fb ? `, ${fb} fallbacks` : ''}.` : 'Done.', fb ? 'error' : 'info');
         go('/results');
       }
     };
@@ -114,27 +142,35 @@ export function App() {
     };
     const req: WorkerRequest = {
       files,
-      config: { ...DEFAULT_CONFIG, weights, maxPerEpisode: cap, provider: llm.provider, label: 'web' },
-      llm: { apiKey: llm.apiKey || undefined, model: llm.model || DEFAULT_MODELS[llm.provider], baseUrl: llm.baseUrl || undefined },
+      config: { ...DEFAULT_CONFIG, weights, maxPerEpisode: cap, provider: llm.provider, agent, label: 'web' },
+      llm: { apiKey: llm.apiKey || undefined, model: llm.model || undefined, baseUrl: llm.baseUrl || undefined, temperature: llm.temperature },
     };
     w.postMessage(req);
-  }, [running, files, report, weights, cap, llm]);
+  }, [running, files, report, weights, cap, llm, agent, aiMode]);
 
   const cancel = () => {
     worker.current?.terminate();
     worker.current = null;
     setStage(null);
+    toast('Run cancelled.');
   };
 
   const exportRun = useCallback(async () => {
-    if (!outputs) return;
+    if (!outputs) {
+      toast('Nothing to export yet. Run the analysis first.');
+      return;
+    }
     const zip = new JSZip();
     for (const [n, content] of Object.entries(outputs)) zip.file(n, content);
     if (Object.keys(labels).length) zip.file('labels.csv', labelsCsv(labels));
     downloadBlob(await zip.generateAsync({ type: 'blob' }), 'promo-run.zip');
+    toast('Exported promo-run.zip');
   }, [outputs, labels]);
 
-  const exportLabels = () => downloadBlob(new Blob([labelsCsv(labels)], { type: 'text/csv' }), 'labels.csv');
+  const exportLabels = () => {
+    downloadBlob(new Blob([labelsCsv(labels)], { type: 'text/csv' }), 'labels.csv');
+    toast('Exported labels.csv');
+  };
 
   const vote = useCallback((id: string, v: Vote) => {
     setLabels((prev) => {
@@ -173,33 +209,52 @@ export function App() {
     u: () => go('/'),
     r: run,
     s: () => setOverlay('settings'),
+    m: () => setOverlay('settings'),
+    c: () => {
+      setCompare((x) => !x);
+      if (!onResults) go('/results');
+    },
     t: toggleTheme,
     '+': () => selectedId && vote(selectedId, 'up'),
     '-': () => selectedId && vote(selectedId, 'down'),
     e: () => void exportRun(),
     'g h': () => go(view ? '/results' : '/'),
     'g a': () => go('/about'),
+    'g m': () => go('/about-me'),
   });
 
   const nav: [string, string, boolean][] = [
     ['Upload', '#/', route.name === 'home'],
     ['Results', '#/results', route.name === 'results' || route.name === 'promo'],
     ['About', '#/about', route.name === 'about'],
+    ['About Me', '#/about-me', route.name === 'about-me'],
   ];
+
+  const lastRun = view ? (aiRan(view) ? `Last run: AI ${view.trace.provider}/${view.trace.model}` : 'Last run: heuristic only') : 'No run yet';
 
   return (
     <div className="min-h-screen">
       <header className="border-b border-border bg-surface">
-        <div className="mx-auto flex max-w-4xl flex-wrap items-center gap-x-5 gap-y-1 px-4 py-2.5">
+        <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-5 gap-y-2 px-4 py-2.5">
           <a href="#/" className="font-semibold text-text no-underline">Promo Finder</a>
-          <nav aria-label="Main" className="flex gap-4 text-sm">
+          <nav aria-label="Main" className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
             {nav.map(([name, href, active]) => (
               <a key={name} href={href} aria-current={active ? 'page' : undefined} className={active ? 'font-semibold text-accent no-underline' : 'text-muted no-underline hover:text-text'}>
                 {name}
               </a>
             ))}
           </nav>
-          <div className="ml-auto flex gap-1.5">
+          <div className="ml-auto flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setOverlay('settings')}
+              title={`${lastRun}. Click or press m to change.`}
+              aria-label={`Mode: ${modeLabel}. Open model settings.`}
+              data-testid="mode-badge"
+              className={`max-w-[14rem] truncate rounded-full border px-2.5 py-1 text-xs font-semibold ${aiMode ? 'border-accent text-accent' : 'border-border text-muted'}`}
+            >
+              {modeLabel}
+            </button>
             <Button aria-label="Keyboard shortcuts" onClick={() => setOverlay('help')}>?</Button>
             <Button aria-label={`Switch to ${resolved(theme) === 'dark' ? 'light' : 'dark'} theme`} onClick={toggleTheme}>{resolved(theme) === 'dark' ? '☀' : '☾'}</Button>
             <Button aria-label="Open settings" onClick={() => setOverlay('settings')}>⚙</Button>
@@ -207,7 +262,7 @@ export function App() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-4xl px-4 py-6">
+      <main className="mx-auto max-w-5xl px-4 py-6">
         {route.name === 'home' && (
           <Home
             fileCount={files.length}
@@ -216,7 +271,10 @@ export function App() {
             error={error}
             running={running}
             stage={stage}
-            provider={llm.provider}
+            stageInfo={stageInfo}
+            aiMode={aiMode}
+            modeLabel={modeLabel}
+            hasResults={view !== null}
             onDrop={(e: DragEvent) => {
               e.preventDefault();
               void attempt(() => readDrop(e.dataTransfer), (n) => `${n} file${n === 1 ? '' : 's'} dropped`);
@@ -229,10 +287,11 @@ export function App() {
           />
         )}
         {route.name === 'results' && (
-          <Results view={view} filters={filters} setFilters={setFilters} visible={visible} selected={selected} setSelected={setSelected} labels={labels} onVote={vote} onOpen={(id) => go(`/promo/${encodeURIComponent(id)}`)} onExport={() => void exportRun()} onExportLabels={exportLabels} onUpload={() => go('/')} searchRef={searchRef} />
+          <Results view={view} filters={filters} setFilters={setFilters} visible={visible} selected={selected} setSelected={setSelected} labels={labels} compare={compare} setCompare={setCompare} onVote={vote} onOpen={(id) => go(`/promo/${encodeURIComponent(id)}`)} onExport={() => void exportRun()} onExportLabels={exportLabels} onUpload={() => go('/')} searchRef={searchRef} />
         )}
-        {route.name === 'promo' && <Detail promo={current} vote={labels[route.id]} onVote={(v) => vote(route.id, v)} onBack={() => go('/results')} />}
+        {route.name === 'promo' && <Detail promo={current} trace={view?.trace} vote={labels[route.id]} onVote={(v) => vote(route.id, v)} onBack={() => go('/results')} />}
         {route.name === 'about' && <About />}
+        {route.name === 'about-me' && <AboutMe />}
       </main>
 
       {overlay === 'help' && (
@@ -251,7 +310,8 @@ export function App() {
           </table>
         </Overlay>
       )}
-      {overlay === 'settings' && <Settings llm={llm} setLlm={setLlm} weights={weights} setWeights={setWeights} cap={cap} setCap={setCap} theme={theme} setTheme={setThemeState} onClose={() => setOverlay(null)} />}
+      {overlay === 'settings' && <Settings llm={llm} setLlm={setLlm} agent={agent} setAgent={setAgent} weights={weights} setWeights={setWeights} cap={cap} setCap={setCap} theme={theme} setTheme={setThemeState} onClose={() => setOverlay(null)} />}
+      <Toaster />
     </div>
   );
 }

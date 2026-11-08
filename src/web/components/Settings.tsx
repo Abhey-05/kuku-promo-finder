@@ -1,6 +1,7 @@
-import { DEFAULT_MODELS } from '../../core/llm/interface';
-import { DEFAULT_WEIGHTS } from '../../core/config';
-import type { ProviderName, Weights } from '../../core/schema';
+import { useRef, useState } from 'react';
+import { DEFAULT_AGENT, DEFAULT_WEIGHTS } from '../../core/config';
+import { PROVIDERS, testConnection, type ConnectionResult } from '../../core/llm/interface';
+import type { AgentSettings, ProviderName, Weights } from '../../core/schema';
 import type { ThemeChoice } from '../theme';
 import { Button, Overlay } from './ui';
 
@@ -9,11 +10,14 @@ export interface LlmSettings {
   model: string;
   baseUrl: string;
   apiKey: string;
+  temperature: number;
 }
 
 interface Props {
   llm: LlmSettings;
   setLlm: (l: LlmSettings) => void;
+  agent: AgentSettings;
+  setAgent: (a: AgentSettings) => void;
   weights: Weights;
   setWeights: (w: Weights) => void;
   cap: number | null;
@@ -33,47 +37,104 @@ const SLIDERS: [keyof Weights, string, number][] = [
 
 const field = 'mt-1 w-full rounded-md border border-border bg-bg px-2 py-1.5 text-sm text-text';
 
-export function Settings({ llm, setLlm, weights, setWeights, cap, setCap, theme, setTheme, onClose }: Props) {
+function ModelSection({ llm, setLlm, agent, setAgent }: Pick<Props, 'llm' | 'setLlm' | 'agent' | 'setAgent'>) {
+  const [result, setResult] = useState<ConnectionResult | null>(null);
+  const [testing, setTesting] = useState(false);
+  const [showKey, setShowKey] = useState(false);
+  const info = PROVIDERS[llm.provider];
+  const ai = llm.provider !== 'none';
+  const ready = ai && (!info.needsKey || llm.apiKey) && (!info.needsBaseUrl || llm.baseUrl);
+  const set = (patch: Partial<LlmSettings>) => {
+    setResult(null);
+    setLlm({ ...llm, ...patch });
+  };
+
+  const test = async () => {
+    setTesting(true);
+    setResult(null);
+    setResult(await testConnection({ provider: llm.provider, apiKey: llm.apiKey || undefined, model: llm.model || undefined, baseUrl: llm.baseUrl || undefined, temperature: llm.temperature }));
+    setTesting(false);
+  };
+
+  return (
+    <section aria-labelledby="model-heading">
+      <h3 id="model-heading" className="mb-2 text-sm font-semibold">Model</h3>
+      <label className="block text-sm">
+        Provider
+        <select className={field} value={llm.provider} onChange={(e) => set({ provider: e.target.value as ProviderName, model: '' })}>
+          {(Object.keys(PROVIDERS) as ProviderName[]).map((p) => (
+            <option key={p} value={p}>{PROVIDERS[p].label}</option>
+          ))}
+        </select>
+      </label>
+      {!ai && <p className="mt-2 text-xs text-muted">Rules only. Free, fast, and nothing leaves your browser.</p>}
+      {ai && (
+        <div className="mt-3 space-y-3">
+          <p className="text-xs text-muted">{info.browser}</p>
+          <label className="block text-sm">
+            Model
+            <input className={field} list="model-suggestions" value={llm.model} placeholder={info.defaultModel} onChange={(e) => set({ model: e.target.value })} spellCheck={false} />
+            <datalist id="model-suggestions">{info.suggested.map((m) => <option key={m} value={m} />)}</datalist>
+            <span className="mt-1 block text-xs text-muted">Any model name works. Empty uses {info.defaultModel}.</span>
+          </label>
+          {(info.needsBaseUrl || llm.baseUrl) && (
+            <label className="block text-sm">
+              Base URL
+              <input className={field} value={llm.baseUrl} placeholder={info.baseUrlHint ?? ''} onChange={(e) => set({ baseUrl: e.target.value })} spellCheck={false} />
+            </label>
+          )}
+          <label className="block text-sm">
+            API key {info.needsKey ? '' : <span className="text-muted">(optional for local servers)</span>}
+            <span className="mt-1 flex gap-1.5">
+              <input className={`${field} mt-0`} type={showKey ? 'text' : 'password'} autoComplete="off" spellCheck={false} value={llm.apiKey} onChange={(e) => set({ apiKey: e.target.value })} aria-label="API key" />
+              <Button onClick={() => setShowKey((s) => !s)} aria-label={showKey ? 'Hide key' : 'Show key'}>{showKey ? 'Hide' : 'Show'}</Button>
+            </span>
+          </label>
+          <p className="text-xs text-muted">The key stays in this tab's memory. It is never saved, logged, exported or put in the trace, and it is gone on reload. Script excerpts go from your browser straight to this provider.</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button onClick={() => void test()} disabled={!ready || testing}>{testing ? 'Testing…' : 'Test connection'}</Button>
+            {!ready && <span className="text-xs text-muted">{info.needsBaseUrl && !llm.baseUrl ? 'Enter a base URL first.' : 'Enter a key first.'}</span>}
+          </div>
+          {result && (
+            <p role="status" className={`rounded-md border p-2 text-sm ${result.ok ? 'border-ok' : 'border-danger'}`}>
+              {result.ok ? (
+                <><span className="font-semibold text-ok">✓ Connected.</span> {result.model}, {result.latency_ms} ms.</>
+              ) : (
+                <><span className="font-semibold text-danger">✕ Failed.</span> {result.message}</>
+              )}
+            </p>
+          )}
+          <label className="block text-sm">
+            <span className="flex justify-between">Temperature <span className="tnum">{llm.temperature.toFixed(1)}</span></span>
+            <input type="range" className="w-full" min={0} max={1} step={0.1} value={llm.temperature} onChange={(e) => set({ temperature: Number(e.target.value) })} />
+          </label>
+          <label className="block text-sm">
+            <span className="flex justify-between">AI weight in the final rank (α) <span className="tnum">{agent.alpha.toFixed(2)}</span></span>
+            <input type="range" className="w-full" min={0} max={1} step={0.05} value={agent.alpha} onChange={(e) => setAgent({ ...agent, alpha: Number(e.target.value) })} />
+            <span className="block text-xs text-muted">final = α × AI score + (1 − α) × heuristic score</span>
+          </label>
+          <label className="block text-sm">
+            Candidates sent to the model
+            <input className={field} type="number" min={5} max={60} value={agent.maxCandidates} onChange={(e) => setAgent({ ...agent, maxCandidates: Math.min(60, Math.max(5, Number(e.target.value) || DEFAULT_AGENT.maxCandidates)) })} />
+            <span className="mt-1 block text-xs text-muted">About {Math.ceil(agent.maxCandidates / agent.batchSize) + 2} calls per run, at most {agent.callCap}.</span>
+          </label>
+        </div>
+      )}
+    </section>
+  );
+}
+
+export function Settings({ llm, setLlm, agent, setAgent, weights, setWeights, cap, setCap, theme, setTheme, onClose }: Props) {
+  const top = useRef<HTMLDivElement>(null);
   return (
     <Overlay title="Settings" onClose={onClose} side>
-      <div className="space-y-6">
-        <section>
-          <h3 className="mb-2 text-sm font-semibold">Model</h3>
-          <label className="block text-sm">
-            Provider
-            <select className={field} value={llm.provider} onChange={(e) => setLlm({ ...llm, provider: e.target.value as ProviderName })}>
-              <option value="none">None: rules only, no key needed</option>
-              <option value="gemini">Gemini</option>
-              <option value="openai-compatible">OpenAI-compatible (Groq, OpenRouter, Ollama)</option>
-            </select>
-          </label>
-          {llm.provider !== 'none' && (
-            <div className="mt-3 space-y-3">
-              <label className="block text-sm">
-                Model name
-                <input className={field} value={llm.model} placeholder={DEFAULT_MODELS[llm.provider]} onChange={(e) => setLlm({ ...llm, model: e.target.value })} />
-              </label>
-              {llm.provider === 'openai-compatible' && (
-                <label className="block text-sm">
-                  Base URL
-                  <input className={field} value={llm.baseUrl} placeholder="https://api.groq.com/openai/v1" onChange={(e) => setLlm({ ...llm, baseUrl: e.target.value })} />
-                </label>
-              )}
-              <label className="block text-sm">
-                API key
-                <input className={field} type="password" autoComplete="off" value={llm.apiKey} onChange={(e) => setLlm({ ...llm, apiKey: e.target.value })} />
-              </label>
-              <p className="text-xs text-muted">
-                The key stays in this tab's memory and is gone on reload. Candidate excerpts go straight from your browser to the provider you choose, so use one you are allowed to send the script to.
-              </p>
-            </div>
-          )}
-        </section>
+      <div ref={top} className="space-y-6">
+        <ModelSection llm={llm} setLlm={setLlm} agent={agent} setAgent={setAgent} />
 
         <section>
           <div className="mb-2 flex items-center justify-between">
-            <h3 className="text-sm font-semibold">Weights</h3>
-            <Button onClick={() => setWeights(DEFAULT_WEIGHTS)}>Reset to defaults</Button>
+            <h3 className="text-sm font-semibold">Heuristic weights</h3>
+            <Button onClick={() => setWeights(DEFAULT_WEIGHTS)}>Reset</Button>
           </div>
           {SLIDERS.map(([k, name, max]) => (
             <label key={k} className="mb-2 block text-sm">
