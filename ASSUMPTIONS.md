@@ -21,3 +21,21 @@ Numbered in the order they were made. The brief says to assume rather than ask.
 17. **The live app is on GitHub Pages.** The Vercel CLI had no login on the build machine, and the brief allows this fallback. `docs/DEPLOY.md` has the Vercel steps.
 18. **The LLM pool is 30 candidates.** Only the top survivors go to the model, which keeps cost per show flat as episodes grow.
 19. **`gemini-2.5-flash` is only the default model name.** It is one text field, so it can be swapped when the model is retired.
+
+## v2 (2026-11-08)
+
+20. **The repo stays under `Abhey-05`.** The v2 brief asked for `Abhey-05` and named another person. The builder confirmed the project is theirs (Abhey Garg, EE23BTECH11202, from their resume), so the builder card was corrected and nothing was migrated.
+21. **The heuristic stays stage 1 and is unchanged.** The agent only reorders, re-cuts and rewords what the heuristic shortlisted, so every v1 metric still holds for heuristic mode.
+22. **AI score = (hook + cliffhanger + standalone − 3) / 12**, a 0 to 1 scale like the heuristic total, so `final = α × AI + (1 − α) × heuristic` mixes like with like. α defaults to 0.6. A candidate the judge could not rate keeps its heuristic score as its final score.
+23. **The judge sees no heuristic scores.** Showing them would anchor the model to the rules it is meant to check.
+24. **The per-episode cap applies to the final 10, not the shortlist.** Capping the shortlist left only about 4 candidates for the model on the 2-episode demo show.
+25. **Re-cuts may only tighten.** The model picks entry IDs inside the original window. A re-cut that overlaps another candidate is rejected and the original kept. A re-cut is rescored by the heuristic, and its AI rating from the judge is kept, because the content is a subset of what was judged.
+26. **A hook must start in the first 3 s and a cliffhanger must end in the last 5 s.** The write-up validator uses the same windows as the heuristic.
+27. **Quotes must be exact substrings of one script entry.** Whitespace is not normalised for hooks and cliffhangers. Quotes inside a "why" line are checked against the promo's text with whitespace normalised.
+28. **One retry per stage, then per-item fallback.** A stage that fails twice keeps the heuristic result for the items that failed, flagged `llm_fallback`. A provider error (bad key, CORS, call cap) falls back the whole stage. A run never fails because of the model.
+29. **The call cap is 14 per run.** Three judge batches, refine and write-up, each with one retry, is 10.
+30. **Cost is shown only for models with a checked price.** Only `gemini-2.5-flash` ($0.30 / $2.50 per million tokens) is in the table. Other models show tokens and "no price on file", rather than a guessed price.
+31. **Default model names are suggestions.** The model field is free text. The defaults (claude-haiku-5-5, gpt-4.1-mini, gemini-2.5-flash, llama-3.3-70b-versatile) were not called for real; a retired name gives a readable "model not found" from Test connection.
+32. **The confidential pack is never sent to a provider by default.** The CLI refuses an input inside `input_pack/` with a provider unless `KUKU_ALLOW_PACK_TO_LLM=1`. In the web app the user chooses what to upload, and Settings says where excerpts go.
+33. **Held-out labels are the builder's own.** `docs/labels_heldout.csv` is a fresh blind sheet; the old labels stay, marked as tuning labels.
+34. **About Me uses the resume's text, not the PDF.** The PDF has a phone number and a referee's email, so it is not published. The viewer shows a placeholder until a cleaned `public/resume.pdf` is added. LinkedIn and email are placeholders until the builder provides them.

@@ -24,18 +24,18 @@ I chose Problem 1 because it has one user (the editor), a real input, and an out
 2. **Segment** into 20 to 60 s windows on entry boundaries, plus a capped search that stitches strong openings to strong endings: 25,230 single and 332 stitched candidates.
 3. **Score** with cue rules. Every score lists the cues behind it.
    `total = 0.35 hook + 0.35 cliffhanger + 0.15 standalone + 0.15 duration - 0.08 × joins`
-4. **Rerank (optional).** The top 30 go to any model behind one interface (Gemini or any OpenAI-compatible endpoint). A reply with an unknown ID or a non-verbatim quote is rejected, and the run falls back to the rules.
-5. **Output.** Overlaps are removed (237 left), the top 10 is capped at 2 per episode, and the run writes the ranked promos, every scored candidate, and a log.
+4. **Agent (optional).** Overlaps are removed (237 left). The top 30 go to an LLM that rates hook, cliffhanger and standalone against a rubric, re-cuts the best 15 only by picking script entry IDs, and writes each promo's hook, cliffhanger and why. Code checks every output (known IDs, exact quotes, 20 to 60 s, no overlaps), retries once with the errors, then falls back per promo. `final = 0.6 AI + 0.4 heuristic`. Anthropic, OpenAI, Gemini or any OpenAI-compatible endpoint plugs in from Settings.
+5. **Output.** The top 10, capped at 2 per episode, every scored candidate, and an agent trace.
 
-Rules do the finding because they are free, repeatable, and explain themselves. The model's job is judgment rules cannot do, such as whether a question matters. It can never add a quote. The web app and CLI share one core.
+Rules do the finding because they are free, repeatable, and explain themselves. The model adds judgment rules cannot, such as whether a question matters, but can never add a quote.
 
 ## 4. Tools used, and one place each got it wrong
 
-**Claude Code** wrote the code and drafted the docs. Its cliffhanger word list had "freeze" but not "freezes", so a strong clip ending on a freeze scored 0 and sat at rank 183. Only reading the labelled misses exposed it. Its first ranking also let clips open mid-sentence, which passed every test, and one reached rank 2.
+**Claude Code** wrote the code and drafted the docs. Its cliffhanger word list had "freeze" but not "freezes", so a strong clip ending on a freeze scored 0 and sat at rank 183. Only reading the labelled misses exposed it. In v2 it applied the per-episode cap before the model's shortlist, so the demo show sent only 4 candidates to the judge; a mocked agent test caught it.
 
 ## 5. Scale to every show
 
-The rules cost nothing: the full pack (102.7 minutes of screen time) ran in under 0.5 s on a laptop and 0.6 s in a browser. The model step sends a fixed top 30, so its cost does not grow with episodes. The real prompt for this pack is 41,554 characters, about 10,400 tokens. With an assumed 1,500 output tokens, at Gemini 2.5 Flash list prices ($0.30 in, $2.50 out per million): 10,400 × $0.30/M + 1,500 × $2.50/M ≈ **$0.007 per show**, or about $0.70 for 100 shows. This is a calculation, not a measured bill, because no key was available and the LLM layer ran only against mocks. A human stays in the loop: the editor reviews the top 10 and thumbs each one, and those labels feed tuning.
+The rules cost nothing: the full pack (102.7 minutes of screen time) ran in under 0.5 s on a laptop and 0.6 s in a browser. The agent sends a fixed top 30 in about 5 calls (capped at 14), so its cost does not grow with episodes. The v1 single-call prompt was about 10,400 tokens; at Gemini 2.5 Flash prices that was ≈ **$0.007 per show**. v2's judge, re-cut and write-up prompts carry more lines, so expect a few times that. This is a calculation, not a bill: no key was available, and the agent ran only against mocks. A human stays in the loop: the editor reviews the top 10 and thumbs each one, and those labels feed tuning.
 
 ## 6. How I know it's good
 
@@ -58,6 +58,6 @@ Zeroing the hook weight replaces all of the top 10 and zeroing the cliffhanger r
 
 - It reads scripts, not video. A clip can read well and play badly. Next: check against shot-level video data.
 - The labels need a human editor. Next: 50 editor labels, then retune.
-- The model step is untested on a real model. Next: run it with a stronger model and measure it against the same labels.
+- The agent is untested on a real model; browser CORS was checked per provider with a fake key. Next: run it on held-out labels the builder wrote, and keep it only if it beats the heuristic.
 
 *Decisions in this document are mine; AI assisted with the code and drafting.*
