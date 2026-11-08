@@ -37,7 +37,7 @@ There was no Anthropic or OpenAI adapter. OpenAI could be reached through `opena
 
 ## 3. Git remote
 
-`git remote -v` gives `https://github.com/Abhey-05/kuku-promo-finder.git`. The v2 brief asked for `Abhey-05`, but the builder confirmed on 2026-11-08 that the project is theirs (Abhey Garg, GitHub `Abhey-05`), so the remote is correct and no migration is needed. The builder card had carried another person's name, roll number and GitHub handle; v2 corrects it.
+`git remote -v` gives `https://github.com/Abhey-05/kuku-promo-finder.git`. An earlier brief named a different account, but the builder confirmed on 2026-11-08 that the project is theirs (Abhey Garg, GitHub `Abhey-05`), so the remote is correct and no migration is needed. The builder card had carried another person's name, roll number and GitHub handle; v2 corrects it.
 
 ## 4. Keys available on the build machine
 

@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { parse as parseDotEnv } from 'dotenv';
 import { basename, resolve, sep } from 'node:path';
 import { DEFAULT_CONFIG } from '../core/config';
 import { PROVIDERS } from '../core/llm/interface';
@@ -15,13 +16,16 @@ Options (flags win over environment variables):
   --max-candidates <n>                                        env KUKU_LLM_MAX_CANDIDATES (default 30)
   --top <n>  --max-per-episode <n|off>  --weights <file.json>
   --test-connection     Send one tiny request and exit.
-The API key is read only from KUKU_LLM_API_KEY (or LLM_API_KEY), never from a flag, so it stays out of shell history.
+  --list-models         Gemini only: list the models this key can call, then exit.
+Settings are also read from a .env file in the current folder (copy .env.example). Real environment variables win over .env, and flags win over both.
+The API key is read only from KUKU_LLM_API_KEY, LLM_API_KEY or (for Gemini) GEMINI_API_KEY, never from a flag, so it stays out of shell history.
 Inputs inside input_pack/ are not sent to a provider unless KUKU_ALLOW_PACK_TO_LLM=1.`;
 
 export interface CliSettings {
   input?: string;
   out?: string;
   testConnection: boolean;
+  listModels: boolean;
   config: Config;
   llm: Omit<LlmOptions, 'provider'>;
   errors: string[];
@@ -70,24 +74,38 @@ export function readCli(argv: string[], env: Record<string, string | undefined>)
     },
   };
   const llm = {
-    apiKey: env.KUKU_LLM_API_KEY || env.LLM_API_KEY || undefined,
+    apiKey: env.KUKU_LLM_API_KEY || env.LLM_API_KEY || (provider === 'gemini' ? env.GEMINI_API_KEY : undefined) || undefined,
     model: pick('model', 'KUKU_LLM_MODEL') || undefined,
     baseUrl: pick('base-url', 'KUKU_LLM_BASE_URL') || undefined,
     temperature: num(pick('temperature', 'KUKU_LLM_TEMPERATURE'), 'temperature', 0, 2, errors) ?? 0,
   };
-  if (provider !== 'none' && PROVIDERS[provider]?.needsKey && !llm.apiKey) errors.push(`${provider} needs a key. Set KUKU_LLM_API_KEY.`);
+  if (provider !== 'none' && PROVIDERS[provider]?.needsKey && !llm.apiKey) errors.push(`${provider} needs a key. Set ${provider === 'gemini' ? 'GEMINI_API_KEY in .env (or KUKU_LLM_API_KEY)' : 'KUKU_LLM_API_KEY'}.`);
   if (provider === 'openai-compatible' && !llm.baseUrl) errors.push('openai-compatible needs --base-url or KUKU_LLM_BASE_URL.');
 
   const input = arg('input');
   const testConnection = argv.includes('--test-connection');
-  if (!testConnection && (!input || !out)) errors.push('Both --input and --out are required.');
+  const listModels = argv.includes('--list-models');
+  if (listModels && provider !== 'gemini') errors.push('--list-models works with --provider gemini only.');
+  if (!testConnection && !listModels && (!input || !out)) errors.push('Both --input and --out are required.');
   if (input && provider !== 'none' && insidePack(input) && env.KUKU_ALLOW_PACK_TO_LLM !== '1') {
     errors.push('The input is inside input_pack/, which is confidential. It is not sent to a provider unless KUKU_ALLOW_PACK_TO_LLM=1 is set. Run with --provider none, or set that variable if you are allowed to share the pack with this provider.');
   }
-  return { input, out, testConnection, config, llm, errors };
+  return { input, out, testConnection, listModels, config, llm, errors };
 }
 
 export function insidePack(path: string): boolean {
   const p = resolve(path);
   return p.split(sep).includes('input_pack');
+}
+
+/**
+ * Merges a .env file under the real environment: a variable already set in the shell is never
+ * overridden. Returns the merged copy and does not touch process.env.
+ */
+export function withDotEnv(env: Record<string, string | undefined>, path = '.env'): Record<string, string | undefined> {
+  if (!existsSync(path)) return env;
+  const file = parseDotEnv(readFileSync(path));
+  const merged: Record<string, string | undefined> = { ...env };
+  for (const [k, v] of Object.entries(file)) if (merged[k] === undefined || merged[k] === '') merged[k] = v;
+  return merged;
 }

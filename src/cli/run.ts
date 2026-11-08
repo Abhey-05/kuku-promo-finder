@@ -4,9 +4,10 @@ import JSZip from 'jszip';
 import { buildOutputs } from '../core/outputs';
 import { describeSegments } from '../core/segment';
 import { runPipeline } from '../core/pipeline';
-import { testConnection } from '../core/llm/interface';
+import { resolveOptions, testConnection } from '../core/llm/interface';
+import { listGeminiModels } from '../core/llm/gemini';
 import type { InputFile } from '../core/schema';
-import { readCli, USAGE } from './config';
+import { readCli, USAGE, withDotEnv } from './config';
 
 function walk(dir: string): string[] {
   return readdirSync(dir).flatMap((n) => {
@@ -31,12 +32,22 @@ async function readInput(path: string): Promise<InputFile[]> {
 }
 
 async function main() {
-  const cli = readCli(process.argv.slice(2), process.env);
+  const cli = readCli(process.argv.slice(2), withDotEnv(process.env));
   if (cli.errors.length) {
     console.error(cli.errors.map((e) => `Error: ${e}`).join('\n') + `\n\n${USAGE}`);
     process.exit(2);
   }
   const { config, llm } = cli;
+  if (cli.listModels) {
+    try {
+      const models = await listGeminiModels(resolveOptions({ ...llm, provider: 'gemini' }));
+      console.log(models.map((m) => `${m.name}${m.displayName ? `  (${m.displayName})` : ''}`).join('\n'));
+      process.exit(0);
+    } catch (err) {
+      console.error(`Failed: ${err instanceof Error ? err.message : err}`);
+      process.exit(1);
+    }
+  }
   if (cli.testConnection) {
     const r = await testConnection({ ...llm, provider: config.provider });
     console.log(r.ok ? `OK: ${config.provider}/${r.model} answered in ${r.latency_ms} ms` : `Failed (${r.kind}): ${r.message}`);

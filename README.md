@@ -45,22 +45,36 @@ Every stage is shown in the Agent trace panel and saved as `agent_trace.json`: m
 |---|---|---|---|
 | `anthropic` | claude-haiku-5-5 | Yes, CORS allowed (uses `anthropic-dangerous-direct-browser-access`) | No, mocks only |
 | `openai` | gpt-4.1-mini | Yes, CORS allowed | No, mocks only |
-| `gemini` | gemini-2.5-flash | Yes, CORS allowed | No, mocks only |
+| `gemini` | gemini-3.8-flash | Yes, CORS allowed | No, mocks only |
 | `openai-compatible` | llama-3.3-70b-versatile | Groq and OpenRouter: yes. Local Ollama needs `OLLAMA_ORIGINS`. Any other endpoint: use Test connection, or the CLI | No, mocks only |
 
 "CORS allowed" was checked on 2026-11-08 by sending a request with a fake key from the browser: each provider returned a readable 401 or 400, so a real key will reach it. **No real model call has been made**, because no key was available. The whole agent path is verified against mocks only: mocked HTTP in `tests/llm.test.ts` and a local OpenAI-compatible mock server in the browser QA (`scripts/mock-llm.mjs`). Expect to adjust prompts on the first real run.
 
 In the web app, open Settings (`m`), pick a provider, type any model name (suggestions are offered), paste the key, and press **Test connection**. It shows ✓ with the model and latency, or the error in plain words (bad key, wrong model, rate limit, CORS).
 
+### Gemini with a .env file (CLI)
+
+```bash
+cp .env.example .env          # .env is git-ignored and has never been committed
+# open .env and paste your key after GEMINI_API_KEY=
+npm run cli -- --provider gemini --list-models      # confirm the model name your key can call
+npm run cli -- --test-connection
+npm run cli -- --input samples/demo-show --out runs/demo-gemini --provider gemini
+```
+
+On the website, paste the key into Settings (`m`) instead. It is held in memory for the session and never stored or built into the site. The build fails if any `VITE_*KEY*` variable is set (Vite would copy it into the public bundle), and after building it scans `dist/` for `AIza…` and other key patterns.
+
+**Data note.** On Gemini's free tier, Google may use what you send to improve its products. That is why the confidential `input_pack/` is never sent to any provider unless `KUKU_ALLOW_PACK_TO_LLM=1` is set (the default in `.env.example` is 0). Use `samples/demo-show/`, which is synthetic, to try a provider. The free tier also has low rate limits: the client retries an HTTP 429 twice with backoff, honours Retry-After up to 10 seconds, and then falls back to the heuristic result.
+
 ### CLI configuration
 
-Flags win over environment variables. The key is read only from the environment, never from a flag.
+Flags win over environment variables, and real environment variables win over `.env`. The key is read only from the environment or `.env`, never from a flag.
 
 | Setting | Flag | Environment |
 |---|---|---|
 | Provider | `--provider` | `KUKU_LLM_PROVIDER` |
 | Model | `--model` | `KUKU_LLM_MODEL` |
-| API key | none | `KUKU_LLM_API_KEY` (or the older `LLM_API_KEY`) |
+| API key | none | `KUKU_LLM_API_KEY`, the older `LLM_API_KEY`, or `GEMINI_API_KEY` for Gemini |
 | Base URL | `--base-url` | `KUKU_LLM_BASE_URL` |
 | Temperature (0) | `--temperature` | `KUKU_LLM_TEMPERATURE` |
 | α (0.6) | `--alpha` | `KUKU_LLM_ALPHA` |

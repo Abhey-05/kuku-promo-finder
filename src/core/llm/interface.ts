@@ -46,8 +46,8 @@ export const PROVIDERS: Record<ProviderName, ProviderInfo> = {
   },
   gemini: {
     label: 'Google Gemini',
-    defaultModel: 'gemini-2.5-flash',
-    suggested: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite'],
+    defaultModel: 'gemini-3.8-flash',
+    suggested: ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-2.5-flash'],
     needsKey: true,
     needsBaseUrl: false,
     browser: 'Browser calls allowed.',

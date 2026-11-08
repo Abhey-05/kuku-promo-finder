@@ -23,6 +23,8 @@ npm run cli -- --test-connection
 npm run cli -- --input path/to/new-show --out runs/new-show
 ```
 
+For Gemini, the same settings can live in `.env` instead (copy `.env.example`, paste the key after `GEMINI_API_KEY=`). `npm run cli -- --provider gemini --list-models` shows the model names the key can call.
+
 The CLI prints calls, tokens, cost (when the model's price is known) and any fallbacks, and writes the same files as the web export.
 
 ## If the provider fails
@@ -32,7 +34,7 @@ Nothing is lost. Any failure falls back to the heuristic result, which is the fu
 | What you see | Meaning | Do |
 |---|---|---|
 | "The key was rejected (HTTP 401)" | Wrong key, or no access to that model | Re-paste the key; check the model name |
-| "Not found (HTTP 404)" | Wrong model name or base URL | Fix the model name; for openai-compatible, check the base URL ends before `/chat/completions` |
+| "Not found (HTTP 404)" | Wrong model name or base URL | Fix the model name (for Gemini, `--list-models` shows valid names); for openai-compatible, check the base URL ends before `/chat/completions` |
 | "Rate limit or quota reached (HTTP 429)" | Too many calls or no credit | The app already retried twice with backoff. Lower "Candidates sent to the model", or wait |
 | "Could not reach …" | Offline, wrong URL, or the endpoint blocks browsers (CORS) | Use the CLI path above; it has no CORS limit |
 | Results with "AI fallback" chips | Some outputs failed the checks twice | Say so: the verifier rejected them and kept the heuristic result. The trace shows each reason |

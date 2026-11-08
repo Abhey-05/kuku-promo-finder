@@ -2,16 +2,18 @@
   "name": "kuku-promo-finder",
   "private": true,
   "version": "1.0.0",
+  "author": "Abhey Garg (https://github.com/Abhey-05)",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit -p tsconfig.json && vite build",
+    "build": "node scripts/check-env.mjs && tsc --noEmit -p tsconfig.json && vite build && node scripts/check-bundle.mjs",
     "preview": "vite preview --port 4173",
     "test": "vitest run",
     "cli": "tsx src/cli/run.ts",
     "eval": "tsx scripts/eval.ts"
   },
   "dependencies": {
+    "dotenv": "^16.4.7",
     "jszip": "^3.10.2",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",

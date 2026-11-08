@@ -24,7 +24,7 @@ Numbered in the order they were made. The brief says to assume rather than ask.
 
 ## v2 (2026-11-08)
 
-20. **The repo stays under `Abhey-05`.** The v2 brief asked for `Abhey-05` and named another person. The builder confirmed the project is theirs (Abhey Garg, EE23BTECH11202, from their resume), so the builder card was corrected and nothing was migrated.
+20. **The repo stays under `Abhey-05`.** An earlier brief named a different GitHub account and another person. The builder confirmed the project is theirs (Abhey Garg, EE23BTECH11202, from their resume), so the builder card was corrected and nothing was migrated.
 21. **The heuristic stays stage 1 and is unchanged.** The agent only reorders, re-cuts and rewords what the heuristic shortlisted, so every v1 metric still holds for heuristic mode.
 22. **AI score = (hook + cliffhanger + standalone − 3) / 12**, a 0 to 1 scale like the heuristic total, so `final = α × AI + (1 − α) × heuristic` mixes like with like. α defaults to 0.6. A candidate the judge could not rate keeps its heuristic score as its final score.
 23. **The judge sees no heuristic scores.** Showing them would anchor the model to the rules it is meant to check.
@@ -35,7 +35,12 @@ Numbered in the order they were made. The brief says to assume rather than ask.
 28. **One retry per stage, then per-item fallback.** A stage that fails twice keeps the heuristic result for the items that failed, flagged `llm_fallback`. A provider error (bad key, CORS, call cap) falls back the whole stage. A run never fails because of the model.
 29. **The call cap is 14 per run.** Three judge batches, refine and write-up, each with one retry, is 10.
 30. **Cost is shown only for models with a checked price.** Only `gemini-2.5-flash` ($0.30 / $2.50 per million tokens) is in the table. Other models show tokens and "no price on file", rather than a guessed price.
-31. **Default model names are suggestions.** The model field is free text. The defaults (claude-haiku-5-5, gpt-4.1-mini, gemini-2.5-flash, llama-3.3-70b-versatile) were not called for real; a retired name gives a readable "model not found" from Test connection.
+31. **Default model names are suggestions.** The model field is free text. The defaults (claude-haiku-5-5, gpt-4.1-mini, gemini-3.8-flash, llama-3.3-70b-versatile) were not called for real; a retired name gives a readable "model not found" from Test connection.
 32. **The confidential pack is never sent to a provider by default.** The CLI refuses an input inside `input_pack/` with a provider unless `KUKU_ALLOW_PACK_TO_LLM=1`. In the web app the user chooses what to upload, and Settings says where excerpts go.
 33. **Held-out labels are the builder's own.** `docs/labels_heldout.csv` is a fresh blind sheet; the old labels stay, marked as tuning labels.
 34. **About Me uses the resume's text, not the PDF.** The PDF has a phone number and a referee's email, so it is not published. The viewer shows a placeholder until a cleaned `public/resume.pdf` is added. LinkedIn and email are placeholders until the builder provides them.
+35. **Name spelling.** A later brief spelled the builder's name "Abhay". The resume and the GitHub account use "Abhey Garg", so that spelling is kept everywhere, along with the roll number, branch and batch from the resume.
+36. **Git authorship.** Earlier commits were made under another person's git identity, set globally on the build machine. History was rewritten to `Abhey Garg <155348867+Abhey-05@users.noreply.github.com>` (GitHub's private no-reply address for this account, which links commits to the profile without publishing an email). A mirror backup was taken first.
+37. **Gemini default model is `gemini-3.8-flash`, not confirmed by the API.** No key was available to call the models list. The name comes from public pricing pages (2026-11). `npm run cli -- --provider gemini --list-models` confirms it; a wrong name gives a readable 404 that points to that command.
+38. **`.env` is for the CLI only.** The site never reads it. The build refuses `VITE_*KEY*` variables and scans `dist/` for keys afterwards.
+39. **Resume PDF.** The brief says `public/resume.pdf` was added, but no such file is in the repo. The original resume has a phone number and a referee's email, so it was not copied in. About Me keeps its placeholder until a cleaned PDF is added.
