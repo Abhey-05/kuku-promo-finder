@@ -48,10 +48,10 @@ check('mode badge says Heuristic only', (await badge()) === 'Heuristic only');
 await shot('01-home');
 
 // Heuristic run.
+// Upload parses at once and, with "Run automatically after upload" on (the default), runs straight away.
 await page.getByRole('button', { name: 'Try demo show' }).click();
-check('demo loads and shows the episode table', (await page.locator('tbody tr').count()) === 2);
-await press('r');
 await page.waitForURL(/#\/results/, { timeout: 20000 });
+check('demo parses and runs automatically after upload', true);
 const cards = page.locator('article');
 check('demo runs end to end, heuristic only', (await cards.count()) > 0, `${await cards.count()} cards`);
 check('heuristic run: trace says no model was called', await seen(page.getByText('Agent trace')));
@@ -143,7 +143,7 @@ check('demo runs end to end in AI mode', (await cards.count()) > 0, `${await car
 check('cards show heuristic, AI and final score chips', await seen(cards.first().getByText(/^Final/)));
 await page.getByText('Agent trace').click();
 check('agent trace renders every stage', (await seen(page.getByRole('cell', { name: 'Judge (AI)' }))) && (await seen(page.getByRole('cell', { name: 'Write-up (AI)' }))) && (await seen(page.getByRole('cell', { name: 'Verify (code)' }))));
-const traceText = (await page.locator('details').textContent()) ?? '';
+const traceText = (await page.locator('details', { hasText: 'Agent trace' }).first().textContent()) ?? '';
 check('trace never shows the key', !traceText.includes('good-key'));
 await shot('06-results-ai');
 await press('c');
@@ -186,7 +186,9 @@ for (const href of links) {
   // github.com answers scripted requests unreliably, so a profile link is checked through GitHub's own API.
   const gh = href.match(/^https:\/\/github\.com\/([^/]+)\/?$/);
   const target = gh ? `https://api.github.com/users/${gh[1]}` : href;
-  const r = await fetch(target, { redirect: 'follow' }).catch(() => null);
+  // Unauthenticated GitHub API calls are rate-limited to 60 an hour; a token (GITHUB_TOKEN) lifts that.
+  const auth = gh && process.env.GITHUB_TOKEN ? { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {};
+  const r = await fetch(target, { redirect: 'follow', headers: auth }).catch(() => null);
   check(`About Me link resolves: ${href}`, !!r && r.status === 200, `${r?.status}${gh ? ' (via api.github.com)' : ''}`);
 }
 check('missing LinkedIn and email show placeholders, not broken links', (await page.getByText('LinkedIn: not added yet').isVisible()) && (await page.getByText('Email: not added yet').isVisible()));
@@ -214,7 +216,6 @@ for (const [name, hash] of [['home', '#/'], ['about me', '#/about-me'], ['about'
 }
 await page.getByRole('link', { name: 'Upload' }).click();
 await page.getByRole('button', { name: 'Try demo show' }).click();
-await press('r');
 await page.waitForURL(/#\/results/, { timeout: 20000 });
 check('no horizontal scroll at phone width: results', await noHScroll());
 await shot('11-results-phone');
@@ -229,12 +230,10 @@ await page.waitForTimeout(300);
 check('junk file gives a readable message', await page.getByText('None of these files look like a screenplay').isVisible());
 
 if (zip) {
-  await page.locator('input[aria-label="Choose files"]').setInputFiles(zip);
-  await page.waitForFunction(() => document.querySelectorAll('tbody tr').length === 50, null, { timeout: 15000 });
   const t0 = Date.now();
-  await page.getByRole('button', { name: 'Run analysis' }).click();
+  await page.locator('input[aria-label="Choose files"]').setInputFiles(zip);
   await page.waitForURL(/#\/results/, { timeout: 60000 });
-  console.log(`     full pack browser run (heuristic only): ${Date.now() - t0} ms`);
+  console.log(`     full pack browser upload + run (heuristic only): ${Date.now() - t0} ms`);
   check('full pack gives 10 promos', (await page.locator('article').count()) === 10);
 }
 

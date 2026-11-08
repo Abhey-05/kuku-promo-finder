@@ -28,6 +28,19 @@ Running on a new show with a key in an interview: see [docs/INTERVIEW_RUNBOOK.md
 
 The header badge always shows the mode: "Heuristic only" or "AI: provider/model".
 
+### The live view
+
+Everything runs in a Web Worker, so the page stays responsive on a 50-episode pack. The engine emits typed progress events (`src/core/events.ts`), and the web app and the CLI show the same thing.
+
+- **Upload.** Parsing starts as soon as files land. A zip shows "Unzipping…" with a running file count. Each episode has a row that updates in place, from queued to parsed (scenes · entries · length) or failed (with the reason). Warnings expand. A summary bar counts episodes, runtime, entries and warnings. "Run automatically after upload" is on by default and remembered in this browser.
+- **Run.** A stage tracker covers read, parse, find cut points, score, remove overlaps, the AI judge, refine and write-up (marked skipped in heuristic mode), verify and rank. Each stage shows its status, a progress bar where the total is known, elapsed time, and a one-line summary such as "25,562 candidates → 237 after overlap removal". Counters show elapsed time, candidates, survivors, the shortlist, LLM calls, tokens and fallbacks. Next to the tracker (below it on a phone), the top 10 updates as stages finish and slides into place when ranks change (no motion if the system asks for reduced motion). Each card is marked "provisional" until the run ends, then "final".
+- **Log.** Press `l` for a timestamped event feed, with filters for stage and level and a pause-scroll option. It shows IDs, counts and short labels: never a key or screenplay text.
+- **AI mode.** Every judge, refine and write-up call appears as it happens. Retries, rejections and fallbacks show in the warning colour on their stage, with "Retry the AI stages".
+- **Cancel** stops the worker at once, shows "Cancelled at <stage>", and keeps the results so far, marked partial.
+- **Done.** A "Done in …" toast appears, focus moves to the results, and the tracker folds into one line above them that expands again.
+
+The CLI prints a line for each finished stage, a live counter on a terminal, and each model call in AI mode.
+
 ### The AI agent
 
 1. **Shortlist (code).** The heuristic's best 30 survivors (configurable).
@@ -137,7 +150,9 @@ To re-run the evaluation: `npm run eval -- metrics` (tuning labels in `docs/labe
 
 ## QA
 
-`CHROMIUM_PATH=<chrome> node scripts/smoke.mjs <url> qa/screenshots/<name>` runs 54 browser checks: heuristic and AI runs on the demo show (AI through a local mock provider), Test connection with good and bad keys, CORS probes for each real provider, every shortcut, both themes, About Me links and phone width. It saves a screenshot of each screen in both themes to `qa/screenshots/` (git-ignored).
+`CHROMIUM_PATH=<chrome> node scripts/smoke.mjs <url> qa/screenshots/<name>` runs 54 browser checks: heuristic and AI runs on the demo show (AI through a local mock provider), Test connection with good and bad keys, CORS probes for each real provider, every shortcut, both themes, About Me links and phone width. It saves a screenshot of each screen in both themes to `qa/screenshots/` (git-ignored). Set `GITHUB_TOKEN` to avoid GitHub's API rate limit on the About Me link check.
+
+`node scripts/live-qa.mjs <url> qa/screenshots [pack.zip]` checks the live view: per-file rows, the stage tracker, provisional results that become final, the log drawer, an AI run through a slow local mock (mid-run state, cancel, fallback and retry), phone width, keyboard-only upload, and a Gemini run when `GEMINI_API_KEY` is set. With a local zip of the pack, it also measures main-thread long tasks (see `docs/EVAL.md`). Never pass the pack against the deployed site.
 
 ## Walkthrough video (optional, 3 minutes)
 

@@ -34,6 +34,8 @@ interface Props {
   onExportLabels: () => void;
   onUpload: () => void;
   searchRef: React.RefObject<HTMLInputElement | null>;
+  /** The finished run's tracker, folded to one line. */
+  runSummary?: React.ReactNode;
 }
 
 export const aiRan = (view: RunView) => view.trace.mode === 'ai';
@@ -164,7 +166,7 @@ export function Results(p: Props) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Ranked promos</h1>
+          <h1 id="results-heading" tabIndex={-1} className="text-2xl font-semibold outline-none">Ranked promos</h1>
           <p className="text-sm text-muted">
             {log.counts.episodes} episodes, {(log.counts.single_candidates + log.counts.multi_candidates).toLocaleString('en-US')} candidates, {log.counts.after_nms} after removing overlaps, {(Object.values(log.timings_ms).reduce((a, b) => a + b, 0) / 1000).toFixed(1)} s.
           </p>
@@ -174,6 +176,7 @@ export function Results(p: Props) {
           <Button variant="primary" onClick={p.onExport}>Export run</Button>
         </div>
       </div>
+      {p.runSummary}
 
       {ai && fallbacks > 0 && (
         <div role="status" className="rounded-lg border border-danger bg-surface p-3 text-sm">

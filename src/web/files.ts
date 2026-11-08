@@ -1,20 +1,7 @@
-import JSZip from 'jszip';
-import type { InputFile } from '../core/schema';
 
-async function fromZip(file: File): Promise<InputFile[]> {
-  const zip = await JSZip.loadAsync(file);
-  const names = Object.keys(zip.files).filter((n) => n.toLowerCase().endsWith('.txt') && !n.includes('__MACOSX') && !zip.files[n].dir);
-  return Promise.all(names.map(async (n) => ({ name: n.split('/').pop()!, text: await zip.files[n].async('string') })));
-}
-
-export async function readFiles(files: File[]): Promise<InputFile[]> {
-  const out: InputFile[] = [];
-  for (const f of files) {
-    const lower = f.name.toLowerCase();
-    if (lower.endsWith('.zip')) out.push(...(await fromZip(f)));
-    else if (lower.endsWith('.txt')) out.push({ name: f.name, text: await f.text() });
-  }
-  return out;
+/** Keeps only the files the worker can read. Reading and unzipping happen in the worker. */
+export function screenplayFiles(files: File[]): File[] {
+  return files.filter((f) => /\.(txt|zip)$/i.test(f.name));
 }
 
 function entryFile(entry: FileSystemFileEntry): Promise<File> {
@@ -34,11 +21,11 @@ async function walkEntry(entry: FileSystemEntry): Promise<File[]> {
   return (await Promise.all(all.map(walkEntry))).flat();
 }
 
-/** Handles dropped folders as well as dropped files. */
-export async function readDrop(dt: DataTransfer): Promise<InputFile[]> {
+/** Handles dropped folders as well as dropped files. Returns File handles only; nothing is read here. */
+export async function readDrop(dt: DataTransfer): Promise<File[]> {
   const entries = [...dt.items].map((i) => i.webkitGetAsEntry()).filter((e): e is FileSystemEntry => !!e);
-  if (entries.length === 0) return readFiles([...dt.files]);
-  return readFiles((await Promise.all(entries.map(walkEntry))).flat());
+  if (entries.length === 0) return screenplayFiles([...dt.files]);
+  return screenplayFiles((await Promise.all(entries.map(walkEntry))).flat());
 }
 
 export function downloadBlob(blob: Blob, name: string) {

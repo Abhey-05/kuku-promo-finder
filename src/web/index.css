@@ -14,6 +14,7 @@
   --track: #e6e2d9;
   --ok: #15703a;
   --danger: #b42318;
+  --warn: #8a4b00;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -31,6 +32,7 @@
     --track: #35322e;
     --ok: #5fd08a;
     --danger: #ff8a7a;
+    --warn: #f5b84a;
   }
 }
 
@@ -48,6 +50,7 @@
   --track: #35322e;
   --ok: #5fd08a;
   --danger: #ff8a7a;
+  --warn: #f5b84a;
 }
 
 @theme inline {
@@ -63,6 +66,7 @@
   --color-track: var(--track);
   --color-ok: var(--ok);
   --color-danger: var(--danger);
+  --color-warn: var(--warn);
 }
 
 html {
@@ -117,7 +121,22 @@ kbd {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
+/* Live results: cards sit at absolute positions and slide when their rank changes. */
+.live-card {
+  position: absolute;
+  left: 0;
+  right: 0;
+}
+
 @media (prefers-reduced-motion: no-preference) {
+  .live-card {
+    transition:
+      transform 320ms ease,
+      opacity 200ms ease;
+  }
+  .stage-running {
+    animation: pulse 1.2s ease-in-out infinite;
+  }
   .skeleton {
     animation: pulse 1.2s ease-in-out infinite;
   }

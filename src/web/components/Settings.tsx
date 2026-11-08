@@ -61,7 +61,11 @@ function ModelSection({ llm, setLlm, agent, setAgent }: Pick<Props, 'llm' | 'set
       <h3 id="model-heading" className="mb-2 text-sm font-semibold">Model</h3>
       <label className="block text-sm">
         Provider
-        <select className={field} value={llm.provider} onChange={(e) => set({ provider: e.target.value as ProviderName, model: '' })}>
+        <select className={field} value={llm.provider} onChange={(e) => {
+            // A base URL belongs to the provider it was typed for; switching provider clears it.
+            const next = e.target.value as ProviderName;
+            set({ provider: next, model: '', baseUrl: next === llm.provider ? llm.baseUrl : '' });
+          }}>
           {(Object.keys(PROVIDERS) as ProviderName[]).map((p) => (
             <option key={p} value={p}>{PROVIDERS[p].label}</option>
           ))}

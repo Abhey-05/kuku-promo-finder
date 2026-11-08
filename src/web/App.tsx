@@ -1,13 +1,13 @@
 import JSZip from 'jszip';
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type DragEvent } from 'react';
 import { DEFAULT_AGENT, DEFAULT_CONFIG, DEFAULT_WEIGHTS } from '../core/config';
 import { PROVIDERS } from '../core/llm/interface';
-import { parseAll } from '../core/parse';
-import type { Stage, StageInfo } from '../core/pipeline';
-import type { AgentSettings, InputFile, ParseReport, RunView, Weights } from '../core/schema';
+import type { AgentSettings, InputFile, ProviderName, RunView, Weights } from '../core/schema';
+import { LogDrawer, RunSummaryLine } from './components/Live';
+import { initialLive, liveReducer } from './live';
 import { Settings, type LlmSettings } from './components/Settings';
 import { Button, Overlay, Toaster } from './components/ui';
-import { downloadBlob, readDrop, readFiles } from './files';
+import { downloadBlob, readDrop, screenplayFiles } from './files';
 import { labelsCsv, loadLabels, saveLabels, type Vote } from './labels';
 import { About } from './screens/About';
 import { AboutMe } from './screens/AboutMe';
@@ -41,10 +41,28 @@ export function App() {
   const [route, setRoute] = useState<Route>(parseHash);
   const [files, setFiles] = useState<InputFile[]>([]);
   const [source, setSource] = useState('');
-  const [report, setReport] = useState<ParseReport | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [stage, setStage] = useState<Stage | null>(null);
-  const [stageInfo, setStageInfo] = useState<Partial<Record<Stage, StageInfo>>>({});
+  const [live, dispatch] = useReducer(liveReducer, undefined, initialLive);
+  const [logOpen, setLogOpen] = useState(false);
+  const [autoRun, setAutoRunState] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('promo-finder:auto-run') !== '0';
+    } catch {
+      return true;
+    }
+  });
+  const setAutoRun = (v: boolean) => {
+    setAutoRunState(v);
+    try {
+      localStorage.setItem('promo-finder:auto-run', v ? '1' : '0');
+    } catch {
+      /* storage blocked: the choice lasts for this visit only */
+    }
+  };
+  const pendingAutoRun = useRef(false);
+  const runStartedAt = useRef(0);
+  const autoRunRef = useRef(autoRun);
+  autoRunRef.current = autoRun;
   const [view, setView] = useState<RunView | null>(null);
   const [outputs, setOutputs] = useState<Record<string, string> | null>(null);
   const [overlay, setOverlay] = useState<'help' | 'settings' | null>(null);
@@ -59,7 +77,6 @@ export function App() {
   const [llm, setLlm] = useState<LlmSettings>({ provider: 'none', model: '', baseUrl: '', apiKey: '', temperature: 0 });
   const worker = useRef<Worker | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
-  const running = stage !== null;
   const aiMode = llm.provider !== 'none';
   const modelName = llm.model || PROVIDERS[llm.provider].defaultModel;
   const modeLabel = aiMode ? `AI: ${llm.provider}/${modelName}` : 'Heuristic only';
@@ -75,84 +92,117 @@ export function App() {
 
   useEffect(() => applyTheme(theme), [theme]);
 
-  const load = useCallback((input: InputFile[], name: string) => {
-    if (input.length === 0) {
-      setError('No .txt screenplays found in that selection.');
+  /** Starts a worker that reads (and unzips) the files and parses each episode, reporting as it goes. */
+  const load = useCallback((sources: (File | InputFile)[], name: string) => {
+    if (sources.length === 0) {
+      setError('No .txt or .zip files found in that selection.');
       return;
     }
+    worker.current?.terminate();
     setError(null);
-    setFiles(input);
+    setFiles([]);
     setSource(name);
-    setReport(parseAll(input).report);
     setView(null);
     setOutputs(null);
+    const zip = sources.some((f) => f.name.toLowerCase().endsWith('.zip'));
+    dispatch({ type: 'start', phase: 'reading', zip, at: Date.now() });
+    go('/');
+    const w = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+    worker.current = w;
+    w.onmessage = ({ data }: MessageEvent<WorkerMessage>) => {
+      if (data.type === 'events') dispatch({ type: 'events', events: data.events, at: Date.now() });
+      else if (data.type === 'read_done') {
+        setFiles(data.files);
+        dispatch({ type: 'read_done', at: Date.now() });
+        w.terminate();
+        if (data.report.totals.episodes_parsed > 0 && autoRunRef.current) pendingAutoRun.current = true;
+      } else if (data.type === 'error') {
+        dispatch({ type: 'fail', message: data.message, at: Date.now() });
+        setError(data.message);
+        w.terminate();
+      }
+    };
+    w.onerror = () => {
+      dispatch({ type: 'fail', message: 'Reading stopped unexpectedly.', at: Date.now() });
+      setError('That file could not be read. If it is a zip, check that it is not damaged.');
+    };
+    const req: WorkerRequest = { type: 'read', sources };
+    w.postMessage(req);
   }, []);
 
-  const attempt = async (read: () => Promise<InputFile[]>, name: (n: number) => string) => {
-    try {
-      const input = await read();
-      load(input, name(input.length));
-    } catch {
-      setError('That file could not be read. If it is a zip, check that it is not damaged.');
-    }
-  };
-
-  const run = useCallback(() => {
-    if (running || files.length === 0 || !report?.totals.episodes_parsed) return;
-    const info = PROVIDERS[llm.provider];
-    if (aiMode && info.needsKey && !llm.apiKey) {
+  const run = useCallback((override?: { provider: ProviderName }) => {
+    if (live.phase === 'running' || live.phase === 'reading' || files.length === 0) return;
+    const provider = override?.provider ?? llm.provider;
+    const info = PROVIDERS[provider];
+    const ai = provider !== 'none';
+    if (ai && info.needsKey && !llm.apiKey) {
       toast(`${info.label} needs an API key. Add it in Settings, or switch to Heuristic only.`, 'error');
       setOverlay('settings');
       return;
     }
-    if (aiMode && info.needsBaseUrl && !llm.baseUrl) {
+    if (ai && info.needsBaseUrl && !llm.baseUrl) {
       toast('Enter a base URL for the OpenAI-compatible provider.', 'error');
       setOverlay('settings');
       return;
     }
     setError(null);
-    setStageInfo({});
-    setStage('parse');
+    runStartedAt.current = Date.now();
+    dispatch({ type: 'start', phase: 'running', at: runStartedAt.current, keepFiles: true });
     go('/');
     worker.current?.terminate();
     const w = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
     worker.current = w;
     w.onmessage = ({ data }: MessageEvent<WorkerMessage>) => {
-      if (data.type === 'stage') {
-        setStage(data.stage);
-        if (data.info) setStageInfo((s) => ({ ...s, [data.stage]: { ...s[data.stage], ...data.info } }));
+      if (data.type === 'events') {
+        dispatch({ type: 'events', events: data.events, at: Date.now() });
       } else if (data.type === 'error') {
-        setStage(null);
+        dispatch({ type: 'fail', message: data.message, at: Date.now() });
         setError(data.message);
-        toast(data.message, 'error');
-      } else {
+        w.terminate();
+      } else if (data.type === 'done') {
         setView(data.view);
         setOutputs(data.outputs);
-        setStage(null);
         setSelected(0);
         setFilters((f) => ({ ...f, useLlm: true }));
+        w.terminate();
+        const took = Date.now() - runStartedAt.current;
         const fb = data.view.trace.stages.find((s) => s.stage === 'verify')?.fallbacks.length ?? 0;
-        toast(data.view.trace.mode === 'ai' ? `Done. ${data.view.trace.calls} model calls${fb ? `, ${fb} fallbacks` : ''}.` : 'Done.', fb ? 'error' : 'info');
+        toast(`Done in ${took < 1000 ? `${took} ms` : `${(took / 1000).toFixed(1)} s`}${data.view.trace.mode === 'ai' ? `. ${data.view.trace.calls} model calls${fb ? `, ${fb} fallbacks` : ''}` : ''}.`, fb ? 'error' : 'info');
         go('/results');
+        setTimeout(() => document.getElementById('results-heading')?.focus(), 50);
       }
     };
     w.onerror = () => {
-      setStage(null);
+      dispatch({ type: 'fail', message: 'The analysis stopped unexpectedly. Your files are still loaded, so you can run it again.', at: Date.now() });
       setError('The analysis stopped unexpectedly. Your files are still loaded, so you can run it again.');
     };
     const req: WorkerRequest = {
       files,
-      config: { ...DEFAULT_CONFIG, weights, maxPerEpisode: cap, provider: llm.provider, agent, label: 'web' },
+      type: 'run',
+      config: { ...DEFAULT_CONFIG, weights, maxPerEpisode: cap, provider, agent, label: 'web' },
       llm: { apiKey: llm.apiKey || undefined, model: llm.model || undefined, baseUrl: llm.baseUrl || undefined, temperature: llm.temperature },
     };
     w.postMessage(req);
-  }, [running, files, report, weights, cap, llm, agent, aiMode]);
+  }, [live.phase, files, weights, cap, llm, agent]);
+
+  // Auto-run once the upload is parsed, using the latest settings.
+  useEffect(() => {
+    if (live.phase === 'ready' && pendingAutoRun.current && files.length) {
+      pendingAutoRun.current = false;
+      run();
+    }
+  }, [live.phase, files, run]);
 
   const cancel = () => {
     worker.current?.terminate();
     worker.current = null;
-    setStage(null);
-    toast('Run cancelled.');
+    dispatch({ type: 'cancel', at: Date.now() });
+    toast('Cancelled. Results so far are kept and marked partial.');
+  };
+
+  const runHeuristic = () => {
+    setLlm((l) => ({ ...l, provider: 'none' }));
+    run({ provider: 'none' });
   };
 
   const exportRun = useCallback(async () => {
@@ -204,10 +254,12 @@ export function App() {
     },
     Escape: () => {
       if (overlay) setOverlay(null);
+      else if (logOpen) setLogOpen(false);
       else (document.activeElement as HTMLElement | null)?.blur();
     },
     u: () => go('/'),
-    r: run,
+    r: () => run(),
+    l: () => setLogOpen((o) => !o),
     s: () => setOverlay('settings'),
     m: () => setOverlay('settings'),
     c: () => {
@@ -265,29 +317,34 @@ export function App() {
       <main className="mx-auto max-w-5xl px-4 py-6">
         {route.name === 'home' && (
           <Home
-            fileCount={files.length}
+            live={live}
             source={source}
-            report={report}
             error={error}
-            running={running}
-            stage={stage}
-            stageInfo={stageInfo}
             aiMode={aiMode}
             modeLabel={modeLabel}
             hasResults={view !== null}
+            autoRun={autoRun}
+            setAutoRun={setAutoRun}
             onDrop={(e: DragEvent) => {
               e.preventDefault();
-              void attempt(() => readDrop(e.dataTransfer), (n) => `${n} file${n === 1 ? '' : 's'} dropped`);
+              void readDrop(e.dataTransfer)
+                .then((f) => load(f, `${f.length} file${f.length === 1 ? '' : 's'} dropped`))
+                .catch(() => setError('That selection could not be read.'));
             }}
-            onPick={(f) => void attempt(() => readFiles(f), (n) => `${n} file${n === 1 ? '' : 's'} selected`)}
+            onPick={(picked) => {
+              const f = screenplayFiles(picked);
+              load(f, `${f.length} file${f.length === 1 ? '' : 's'} selected`);
+            }}
             onDemo={() => load(demoFiles, 'Demo show (fictional)')}
-            onRun={run}
+            onRun={() => run()}
             onCancel={cancel}
+            onHeuristic={runHeuristic}
             onSettings={() => setOverlay('settings')}
+            onResults={() => go('/results')}
           />
         )}
         {route.name === 'results' && (
-          <Results view={view} filters={filters} setFilters={setFilters} visible={visible} selected={selected} setSelected={setSelected} labels={labels} compare={compare} setCompare={setCompare} onVote={vote} onOpen={(id) => go(`/promo/${encodeURIComponent(id)}`)} onExport={() => void exportRun()} onExportLabels={exportLabels} onUpload={() => go('/')} searchRef={searchRef} />
+          <Results view={view} filters={filters} setFilters={setFilters} visible={visible} selected={selected} setSelected={setSelected} labels={labels} compare={compare} setCompare={setCompare} onVote={vote} onOpen={(id) => go(`/promo/${encodeURIComponent(id)}`)} onExport={() => void exportRun()} onExportLabels={exportLabels} onUpload={() => go('/')} searchRef={searchRef} runSummary={<RunSummaryLine live={live} aiMode={view?.trace.mode === 'ai'} onRetry={() => run()} />} />
         )}
         {route.name === 'promo' && <Detail promo={current} trace={view?.trace} vote={labels[route.id]} onVote={(v) => vote(route.id, v)} onBack={() => go('/results')} />}
         {route.name === 'about' && <About />}
@@ -311,6 +368,7 @@ export function App() {
         </Overlay>
       )}
       {overlay === 'settings' && <Settings llm={llm} setLlm={setLlm} agent={agent} setAgent={setAgent} weights={weights} setWeights={setWeights} cap={cap} setCap={setCap} theme={theme} setTheme={setThemeState} onClose={() => setOverlay(null)} />}
+      {logOpen && <LogDrawer live={live} onClose={() => setLogOpen(false)} />}
       <Toaster />
     </div>
   );

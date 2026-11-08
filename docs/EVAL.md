@@ -26,7 +26,7 @@ The builder labels a fresh, blind sheet: `docs/labels_heldout.csv`, 30 rows (the
 
 ### LLM failure statistics
 
-No real model run has happened yet: no provider key was available on the build machine. The agent's rejection, retry and fallback paths are exercised only by mocked tests (`tests/llm.test.ts`) and by the browser QA against a local mock server, so there are no real failure rates to report. The held-out command prints them from the trace when an AI run is made.
+No real model run has completed yet. On 2026-11-08 a Gemini key was added: the models list call worked and confirmed `gemini-3.8-flash` exists, and the browser reached Gemini with the key accepted, but every generateContent call that day returned HTTP 503 "This model is currently experiencing high demand" (or did not answer within 60 to 90 s), for 3.8 Flash and the other Flash models tried. `gemini-2.5-flash` returned 404 "no longer available to new users". The agent's rejection, retry and fallback paths are exercised only by mocked tests (`tests/llm.test.ts`) and by the browser QA against a local mock server, so there are no real failure rates to report. The held-out command prints them from the trace when an AI run is made.
 
 ## Results on the tuning labels (v1 and v2 heuristic)
 
@@ -110,6 +110,19 @@ Ranks are v2 ranks among the 237 NMS survivors unless marked. "S" marks a standa
 | 11 | `E36-160.50-200.75` | v1 rank 2 | The clip opened mid-sentence. It passed every invariant. | Fixed in v2: continuation lines cannot start a clip. |
 | 12 | `E16-023.00-040.80+E16-060.00-083.19` | v1 rank 4 | The sound cue contains the word "cliffhanger", but the scene ends on a tender moment. | Fixed in v2 for this case. The word in a sound cue is still over-trusted. |
 | 13 | Upper band, 7 labelled | 0 of 7 labelled post | Moderate scores come from one cue each, and one cue is not enough to make a promo. | Require a hook and a cliffhanger cue, rather than a weighted sum. |
+
+## Main-thread responsiveness (live view)
+
+Measured on 2026-11-08 with `scripts/live-qa.mjs` against a local production build (`vite preview`), headless Chromium on an Apple-silicon laptop, uploading the full 50-episode pack as a zip, heuristic mode. The pack was read only by the local browser and was not deployed or sent anywhere. A `PerformanceObserver` for `longtask` (tasks over 50 ms) ran from page load; a control run with a forced 300 ms block was recorded as one 300 ms task, so the observer works in this browser.
+
+| Measure | Value |
+|---|---|
+| Upload to final results on screen | 3.6 s |
+| Main-thread tasks over 50 ms | 0 |
+| Main-thread tasks over 200 ms (target: none) | 0 |
+| Longest main-thread task | under 50 ms (none recorded) |
+
+Reading, unzipping, parsing and the pipeline all run in a Web Worker. Progress reaches the page in batches of at most about ten a second, so the page never re-renders on every event. One machine and one run: a slower device will take longer, and this is not a claim about every device.
 
 ## How the labels stay private
 
