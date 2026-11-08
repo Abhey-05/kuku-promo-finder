@@ -1,7 +1,9 @@
 /**
- * Evaluation. Two commands:
- *   npm run eval -- sample   Writes a blind, shuffled labelling sheet (private, git-ignored).
- *   npm run eval -- metrics  Reads docs/labels.csv and writes the numbers into docs/EVAL.md.
+ * Evaluation. Four commands:
+ *   npm run eval -- sample          Writes a blind, shuffled labelling sheet (private, git-ignored).
+ *   npm run eval -- metrics         Reads docs/labels.csv (tuned on) and writes the numbers into docs/EVAL.md.
+ *   npm run eval -- heldout-sample  Writes docs/labels_heldout.csv for the builder to label (private, git-ignored).
+ *   npm run eval -- heldout         Scores heuristic, AI (if allowed) and random on the held-out labels.
  * Nothing here is hand-typed: every number in the metrics block comes from this script.
  */
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
@@ -16,6 +18,9 @@ const PACK = process.env.INPUT_PACK ?? 'input_pack';
 const LABELS = 'docs/labels.csv';
 const SHEET = 'docs/private/label_sheet.md';
 const SEED = 20261107;
+const HELDOUT = 'docs/labels_heldout.csv';
+const HELDOUT_STRATA = 'docs/private/heldout_strata.json';
+const HELDOUT_SEED = 20261108;
 
 function loadFiles(): InputFile[] {
   const walk = (d: string): string[] =>
@@ -200,7 +205,7 @@ async function metrics() {
       ['Precision@5, heuristic', pct(precisionAt(5))],
       ['Precision@10, heuristic', pct(precisionAt(10))],
       ['Random baseline (expected precision of a uniform pick)', pct(randomP)],
-      ['LLM layer', 'Not run. No API key was available, so there is no number to report.'],
+      ['LLM layer', 'Not on these labels. They were used to tune the heuristic; see the held-out section.'],
       ['Labelled post in the top 10', `${r.promos.filter((p) => labels.get(p.id)!.post).length}/10`],
       ['Hook and cliffhanger verbatim in source', `${verbatim}/${r.promos.length} (${pct(verbatim / r.promos.length)})`],
       ['Hook cue inside first 3 s of the promo', `${hookIn3}/${r.promos.length} (${pct(hookIn3 / r.promos.length)})`],
@@ -231,8 +236,107 @@ async function metrics() {
   console.log(block);
 }
 
+
+const csvCell = (v: unknown) => {
+  const t = String(v ?? '');
+  return /[",\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+};
+
+/** Verbatim lines of a candidate, one cell, for the human labeller. No scores, no rank. */
+function verbatim(c: Candidate, r: RunResult): string {
+  const eps = new Map(r.episodes.map((e) => [e.number, e]));
+  return c.segments
+    .flatMap((s) =>
+      eps
+        .get(s.episode)!
+        .entries.filter((e) => e.start >= s.start - 0.005 && e.end <= s.end + 0.005 && e.type !== 'CAMERA')
+        .map((e) => `${formatTimestamp(e.start)} ${e.type === 'DIALOGUE' ? e.speaker : e.type}: ${e.text.replace(/\s*\n\s*/g, ' ')}`),
+    )
+    .join('\n');
+}
+
+/** The heuristic top 10 plus 20 stratified survivors, shuffled. The builder fills the label column. */
+async function heldoutSample() {
+  if (existsSync(HELDOUT)) throw new Error(`${HELDOUT} exists. It holds the builder's labels; move it away first if you really want a new sheet.`);
+  const r = await runPipeline(loadFiles(), { ...DEFAULT_CONFIG, label: 'heldout-sample' });
+  const rand = rng(HELDOUT_SEED);
+  const s = strata(r);
+  const take = (xs: Candidate[], n: number) => shuffled(xs, rand).slice(0, n);
+  const picks = [
+    ...s.top.map((c) => ({ c, stratum: 'top' })),
+    ...take(s.upper, 7).map((c) => ({ c, stratum: 'upper' })),
+    ...take(s.middle, 7).map((c) => ({ c, stratum: 'middle' })),
+    ...take(s.lower, 6).map((c) => ({ c, stratum: 'lower' })),
+  ];
+  const blind = shuffled(picks, rand);
+  const rows = blind.map(({ c }) => [
+    c.id,
+    [...new Set(c.segments.map((x) => x.episode))].join(' '),
+    describeSegments(c.segments),
+    verbatim(c, r),
+    '',
+    '',
+  ]);
+  writeFileSync(HELDOUT, [['candidate_id', 'episode', 'timestamps', 'verbatim_text', 'label', 'note'], ...rows].map((x) => x.map(csvCell).join(',')).join('\n') + '\n');
+  mkdirSync('docs/private', { recursive: true });
+  writeFileSync(HELDOUT_STRATA, JSON.stringify(Object.fromEntries(blind.map((p) => [p.c.id, p.stratum])), null, 2));
+  console.log(`Wrote ${HELDOUT} with ${blind.length} rows. Label each "post" or "dont" in the label column.`);
+}
+
+async function heldout() {
+  if (!existsSync(HELDOUT)) throw new Error(`Missing ${HELDOUT}. Run: npm run eval -- heldout-sample`);
+  const rows = parseCsv(readFileSync(HELDOUT, 'utf8')).slice(1);
+  const labels = new Map(rows.filter((x) => x[4]?.trim()).map((x) => [x[0], x[4].trim().toLowerCase() === 'post']));
+  const block = (body: string) => {
+    const doc = readFileSync('docs/EVAL.md', 'utf8');
+    writeFileSync('docs/EVAL.md', doc.replace(/<!-- heldout:start -->[\s\S]*<!-- heldout:end -->/, `<!-- heldout:start -->\n${body}\n<!-- heldout:end -->`));
+    console.log(body);
+  };
+  if (labels.size === 0) {
+    block(`**Waiting on the builder's labels.** \`${HELDOUT}\` has ${rows.length} rows and none is labelled yet, so there are no held-out numbers.`);
+    return;
+  }
+  const strataOf: Record<string, string> = JSON.parse(readFileSync(HELDOUT_STRATA, 'utf8'));
+  const files = loadFiles();
+  const r = await runPipeline(files, { ...DEFAULT_CONFIG, label: 'heldout' });
+  const at = (ids: string[], k: number) => {
+    const known = ids.slice(0, k).filter((id) => labels.has(id));
+    return { p: known.filter((id) => labels.get(id)).length / k, coverage: `${known.length}/${k}` };
+  };
+  const s = strata(r);
+  const sizes: Record<string, number> = { top: s.top.length, upper: s.upper.length, middle: s.middle.length, lower: s.lower.length };
+  const pop = Object.values(sizes).reduce((a, b) => a + b, 0);
+  const rate = (band: string) => {
+    const xs = [...labels.entries()].filter(([id]) => strataOf[id] === band).map(([, v]) => v);
+    return xs.length ? xs.filter(Boolean).length / xs.length : 0;
+  };
+  const randomP = Object.entries(sizes).reduce((sum, [k, n]) => sum + (n / pop) * rate(k), 0);
+  const h = r.promos.map((p) => p.id);
+  const table: (string | number)[][] = [
+    ['Ranking', 'P@5', 'P@10', 'Labelled among its top 10'],
+    ['Heuristic only', pct(at(h, 5).p), pct(at(h, 10).p), at(h, 10).coverage],
+  ];
+  const provider = process.env.KUKU_LLM_PROVIDER;
+  let aiNote = 'AI ranking: not run. It needs KUKU_LLM_PROVIDER, KUKU_LLM_API_KEY and KUKU_ALLOW_PACK_TO_LLM=1, because this sends the confidential pack to the provider.';
+  if (provider && provider !== 'none' && process.env.KUKU_ALLOW_PACK_TO_LLM === '1') {
+    const ai = await runPipeline(files, { ...DEFAULT_CONFIG, provider: provider as Config['provider'], label: 'heldout-ai' }, {
+      apiKey: process.env.KUKU_LLM_API_KEY,
+      model: process.env.KUKU_LLM_MODEL,
+      baseUrl: process.env.KUKU_LLM_BASE_URL,
+    });
+    const ids = ai.promos.map((p) => p.id);
+    table.push([`AI blended (${ai.trace.provider}/${ai.trace.model})`, pct(at(ids, 5).p), pct(at(ids, 10).p), at(ids, 10).coverage]);
+    const llm = ai.trace.stages.filter((x) => ['judge', 'refine', 'writeup'].includes(x.stage));
+    const items = llm.reduce((n, x) => n + x.items_in, 0);
+    aiNote = `AI run: ${ai.trace.calls} calls; rejected outputs ${llm.reduce((n, x) => n + x.rejected.length, 0)} of ${items} items; retries ${llm.reduce((n, x) => n + x.retries, 0)} of ${ai.trace.calls} calls; fallbacks ${new Set(llm.flatMap((x) => x.fallbacks)).size} of ${items} items. AI top-10 promos without a label count as not post, so a low coverage understates it.`;
+  }
+  table.push(['Random baseline', pct(randomP), pct(randomP), 'expected, from the bands']);
+  block([`${labels.size} of ${rows.length} rows labelled by the builder.`, '', metricsTable(table), '', aiNote].join('\n'));
+}
+
 const mode = process.argv[2];
-(mode === 'sample' ? sample() : mode === 'metrics' ? metrics() : Promise.reject(new Error('Use: sample | metrics'))).catch((e) => {
+const modes: Record<string, () => Promise<void>> = { sample, metrics, 'heldout-sample': heldoutSample, heldout };
+(modes[mode] ?? (() => Promise.reject(new Error('Use: sample | metrics | heldout-sample | heldout'))))().catch((e) => {
   console.error(e);
   process.exit(1);
 });

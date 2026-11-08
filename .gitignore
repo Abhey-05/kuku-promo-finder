@@ -17,3 +17,4 @@ docs/labels.csv.template
 node_modules
 node_modules.nosync/
 qa/
+docs/labels_heldout.csv

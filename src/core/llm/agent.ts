@@ -315,7 +315,7 @@ export async function runAgent(pool: Candidate[], deps: AgentDeps): Promise<{ pr
   const shortlist = pool.slice(0, maxCandidates);
   const sl = newStage('shortlist', null, pool.length);
   sl.items_out = shortlist.length;
-  sl.notes.push(`Top ${shortlist.length} heuristic survivors after overlap removal and the per-episode cap.`);
+  sl.notes.push(`Top ${shortlist.length} heuristic survivors after overlap removal. The per-episode cap applies at the final rank.`);
   trace.stages.push(sl);
 
   // 2. Judge (LLM), in batches.
