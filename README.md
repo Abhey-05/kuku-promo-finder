@@ -58,7 +58,7 @@ Every stage is shown in the Agent trace panel and saved as `agent_trace.json`: m
 |---|---|---|---|
 | `anthropic` | claude-haiku-5-5 | Yes, CORS allowed (uses `anthropic-dangerous-direct-browser-access`) | No, mocks only |
 | `openai` | gpt-4.1-mini | Yes, CORS allowed | No, mocks only |
-| `gemini` | gemini-3.8-flash | Yes, CORS allowed | No, mocks only |
+| `gemini` | gemini-3.1-flash-lite | Yes, CORS allowed | Yes: demo show, CLI, 2026-11-08 |
 | `openai-compatible` | llama-3.3-70b-versatile | Groq and OpenRouter: yes. Local Ollama needs `OLLAMA_ORIGINS`. Any other endpoint: use Test connection, or the CLI | No, mocks only |
 
 "CORS allowed" was checked on 2026-11-08 by sending a request with a fake key from the browser: each provider returned a readable 401 or 400, so a real key will reach it. **No real model call has been made**, because no key was available. The whole agent path is verified against mocks only: mocked HTTP in `tests/llm.test.ts` and a local OpenAI-compatible mock server in the browser QA (`scripts/mock-llm.mjs`). Expect to adjust prompts on the first real run.

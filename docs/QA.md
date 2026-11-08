@@ -40,3 +40,5 @@ The agent path end to end is **verified against mocks only**.
 | Live bundle | 0 key patterns, the key from `.env` absent, 0 of 300 sampled show lines |
 
 **Gemini.** The key works: the models list returned and Test connection reached Gemini from the browser and the CLI. Every generateContent call on 2026-11-08 returned HTTP 503 "This model is currently experiencing high demand", or did not answer within 90 s, for `gemini-3.8-flash` and the other Flash models tried. A real Gemini run of the demo show is still to do.
+
+**Gemini, later the same day.** `gemini-3.1-flash-lite` (a lighter model) answered. Test connection: 1.5 s. Demo show through the CLI: 5 calls (judge 1, refine 2, write-up 2), 23,557 input and 3,369 output tokens, 19 s in all. The verifier rejected one refine item and one write-up item, the model fixed both on its one retry, and there were 0 fallbacks. All 3 promos passed the length and verbatim-quote checks. It is now the default Gemini model.
