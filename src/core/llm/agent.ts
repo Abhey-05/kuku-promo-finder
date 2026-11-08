@@ -2,7 +2,8 @@ import { z } from 'zod';
 import { CLIFF_WINDOW_S, HOOK_WINDOW_S, type StandaloneContext } from '../features';
 import { applyDiversity, sharesEdge, toPromo } from '../rank';
 import { scoreSegments } from '../score';
-import { candidateEnds, candidateStarts, MAX_PROMO_S, MIN_PROMO_S, MIN_SEGMENT_S, overlapsTooMuch } from '../segment';
+import { candidateEnds, candidateStarts, describeSegments, MAX_PROMO_S, MIN_PROMO_S, MIN_SEGMENT_S, overlapsTooMuch } from '../segment';
+import type { Emit, PromoSummary } from '../events';
 import type { AgentTrace, Candidate, Config, LlmLog, LlmOptions, Promo, Segment, TraceStage, TraceStageName } from '../schema';
 import { LlmError, scrub, sleep, withBackoff, type Message, type ModelCall } from './http';
 import { ADAPTERS, estimateCost, resolveOptions } from './interface';
@@ -18,7 +19,15 @@ export interface AgentDeps {
   /** Replaces the provider adapter, for tests. */
   call?: ModelCall;
   wait?: (ms: number) => Promise<void>;
-  onProgress?: (stage: 'judge' | 'refine' | 'writeup' | 'verify', done: number, total: number) => void;
+  /** Live progress: stage start and end, every model call, provisional rankings. */
+  emit?: Emit;
+}
+
+type Step = 'judge' | 'refine' | 'writeup';
+interface Tag {
+  step: Step;
+  batch: number;
+  emit: Emit;
 }
 
 type Problem = { item?: string; reason: string };
@@ -231,21 +240,27 @@ export function checkWriteup(raw: string, info: Map<string, WriteupInfo>): Check
 function client(deps: AgentDeps, trace: AgentTrace) {
   const opts = deps.opts;
   const call = deps.call ?? (opts.provider === 'none' ? undefined : ADAPTERS[opts.provider]);
-  return async (stage: TraceStage, messages: Message[]): Promise<string> => {
+  return async (stage: TraceStage, messages: Message[], tag: Tag): Promise<string> => {
     if (!call) throw new LlmError('config', 'No provider is set.');
     if (trace.calls >= trace.call_cap) throw new LlmError('config', `Call cap of ${trace.call_cap} reached for this run.`);
     trace.calls++;
     stage.calls++;
     const t0 = Date.now();
+    tag.emit({ type: 'llm_call', step: tag.step, batch: tag.batch, status: 'started' });
     try {
       const res = await withBackoff(
         () => call(messages, opts),
-        (e) => stage.notes.push(`retrying after: ${e.message}`),
+        (e) => {
+          stage.notes.push(`retrying after: ${e.message}`);
+          tag.emit({ type: 'llm_call', step: tag.step, batch: tag.batch, status: 'retry', detail: e.kind });
+        },
         deps.wait ?? sleep,
       );
       if (res.inputTokens !== undefined) stage.input_tokens = (stage.input_tokens ?? 0) + res.inputTokens;
       if (res.outputTokens !== undefined) stage.output_tokens = (stage.output_tokens ?? 0) + res.outputTokens;
       if (res.model && !stage.model) stage.model = res.model;
+      const tokens = res.inputTokens === undefined && res.outputTokens === undefined ? undefined : (res.inputTokens ?? 0) + (res.outputTokens ?? 0);
+      tag.emit({ type: 'llm_call', step: tag.step, batch: tag.batch, status: 'ok', tokens, ms: Date.now() - t0 });
       return res.text;
     } finally {
       stage.latency_ms += Date.now() - t0;
@@ -263,21 +278,30 @@ async function askChecked<T>(
   prompt: string,
   check: (raw: string) => Checked<T>,
   key: string | undefined,
+  tag: Tag,
 ): Promise<T | null> {
   const messages: Message[] = [{ role: 'user', content: prompt }];
   let last: Checked<T> | null = null;
+  const ev = (status: 'retry' | 'rejected' | 'fallback', detail: string) => tag.emit({ type: 'llm_call', step: tag.step, batch: tag.batch, status, detail });
   for (const attempt of [1, 2]) {
     let raw: string;
     try {
-      raw = await ask(stage, messages);
+      raw = await ask(stage, messages, tag);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') throw err;
       stage.notes.push(`call failed: ${scrub(err instanceof Error ? err.message : String(err), key).slice(0, 300)}`);
+      ev('fallback', err instanceof LlmError ? `call failed: ${err.kind}` : 'call failed');
       return last?.value ?? null;
     }
     last = check(raw);
     for (const p of last.problems) stage.rejected.push({ ...p, attempt });
-    if (last.problems.length === 0 || attempt === 2) return last.value;
+    if (last.problems.length) ev('rejected', `${last.problems.length} item${last.problems.length === 1 ? '' : 's'} rejected by the verifier`);
+    if (last.problems.length === 0) return last.value;
+    if (attempt === 2) {
+      ev('fallback', 'rejected items keep the heuristic result');
+      return last.value;
+    }
+    ev('retry', 'sending the problems back once');
     stage.retries++;
     messages.push({ role: 'assistant', content: raw.slice(0, 12000) }, { role: 'user', content: retryMessage(last.problems.map((p) => p.reason)) });
   }
@@ -309,7 +333,23 @@ export async function runAgent(pool: Candidate[], deps: AgentDeps): Promise<{ pr
   const trace = emptyTrace(config, opts);
   const ask = client(deps, trace);
   const model = opts.model ?? null;
-  const progress = deps.onProgress ?? (() => {});
+  const emit: Emit = deps.emit ?? (() => {});
+  let stageStart = Date.now();
+  const started = (stage: Step, total?: number) => {
+    stageStart = Date.now();
+    emit({ type: 'stage_started', stage, total });
+  };
+  const done = (stage: Step, summary: string) => emit({ type: 'stage_done', stage, ms: Date.now() - stageStart, summary });
+  const summaries = (list: Scored[]): PromoSummary[] =>
+    list.slice(0, 10).map((s, i) => ({
+      id: s.c.id,
+      rank: i + 1,
+      where: describeSegments(s.c.segments),
+      duration_s: Math.round(s.c.segments.reduce((n, g) => n + g.end - g.start, 0) * 100) / 100,
+      score: s.final,
+      heuristic_score: s.c.scores.total,
+      ...(s.llm === undefined ? {} : { ai_score: Math.round(s.llm * 1000) / 1000 }),
+    }));
 
   // 1. Shortlist (code).
   const shortlist = pool.slice(0, maxCandidates);
@@ -325,16 +365,17 @@ export async function runAgent(pool: Candidate[], deps: AgentDeps): Promise<{ pr
   const ratings = new Map<string, Rating>();
   const batches: Candidate[][] = [];
   for (let i = 0; i < shortlist.length; i += batchSize) batches.push(shortlist.slice(i, i + batchSize));
+  started('judge', batches.length);
   for (const [bi, batch] of batches.entries()) {
-    progress('judge', bi, batches.length);
     const text = new Map(batch.map((c) => [c.id, linesOf(c).map((x) => x.e.text).join('\n')]));
     const prompt = judgePrompt(batch.map((c) => ({ id: c.id, lines: linesOf(c).map((x) => lineOf(x.id, x.e)) })));
-    const got = await askChecked(ask, judge, prompt, (raw) => checkJudge(raw, text), opts.apiKey);
+    const got = await askChecked(ask, judge, prompt, (raw) => checkJudge(raw, text), opts.apiKey, { step: 'judge', batch: bi + 1, emit });
     for (const [id, r] of got ?? []) ratings.set(id, r);
+    emit({ type: 'stage_progress', stage: 'judge', done: bi + 1, total: batches.length });
   }
-  progress('judge', batches.length, batches.length);
   judge.items_out = ratings.size;
   judge.fallbacks = shortlist.filter((c) => !ratings.has(c.id)).map((c) => c.id);
+  done('judge', `${ratings.size} of ${shortlist.length} rated in ${batches.length} batch${batches.length === 1 ? '' : 'es'}${judge.fallbacks.length ? `, ${judge.fallbacks.length} kept the heuristic score` : ''}`);
 
   // 6a. Blend: final = alpha * llm + (1 - alpha) * heuristic.
   const blend = (c: Candidate, r?: Rating) => {
@@ -346,11 +387,12 @@ export async function runAgent(pool: Candidate[], deps: AgentDeps): Promise<{ pr
   let scored: Scored[] = shortlist
     .map((c) => ({ c, origin: c.id, rating: ratings.get(c.id), ...blend(c, ratings.get(c.id)), fallback: !ratings.has(c.id) }))
     .sort(order);
+  emit({ type: 'partial_ranking', top: summaries(scored) });
 
   // 3. Refine boundaries (LLM, constrained to entry IDs).
   const refine = newStage('refine', model, Math.min(refineTop, scored.length));
   trace.stages.push(refine);
-  progress('refine', 0, 1);
+  started('refine', 1);
   const toRefine = scored.slice(0, refineTop);
   const info = new Map<string, RefineInfo>();
   const blocks = toRefine.map(({ c }) => {
@@ -374,7 +416,7 @@ export async function runAgent(pool: Candidate[], deps: AgentDeps): Promise<{ pr
       ),
     };
   });
-  const cuts = toRefine.length ? await askChecked(ask, refine, refinePrompt(blocks), (raw) => checkRefine(raw, info), opts.apiKey) : new Map();
+  const cuts = toRefine.length ? await askChecked(ask, refine, refinePrompt(blocks), (raw) => checkRefine(raw, info), opts.apiKey, { step: 'refine', batch: 1, emit }) : new Map();
   // Applied one at a time, so a new cut is checked against cuts already moved too.
   let moved = 0;
   for (const [i, s] of scored.entries()) {
@@ -392,8 +434,10 @@ export async function runAgent(pool: Candidate[], deps: AgentDeps): Promise<{ pr
   if (cuts === null && toRefine.length) refine.fallbacks = toRefine.map((s) => s.c.id);
   refine.items_out = moved;
   refine.notes.push(`${moved} of ${toRefine.length} cuts changed.`);
-  progress('refine', 1, 1);
   scored.sort(order);
+  emit({ type: 'stage_progress', stage: 'refine', done: 1, total: 1 });
+  done('refine', `${moved} of ${toRefine.length} cuts changed${refine.fallbacks.length ? '; kept the heuristic cuts after a failed call' : ''}`);
+  emit({ type: 'partial_ranking', top: summaries(scored) });
 
   // 6b. Final rank, with the per-episode cap.
   const rank = newStage('rank', null, scored.length);
@@ -408,21 +452,21 @@ export async function runAgent(pool: Candidate[], deps: AgentDeps): Promise<{ pr
   // 4. Write-up (LLM).
   const writeup = newStage('writeup', model, chosen.length);
   trace.stages.push(writeup);
-  progress('writeup', 0, 1);
+  started('writeup', 1);
   const winfo = new Map<string, WriteupInfo>();
   const wblocks = chosen.map(({ c }) => {
     const all = entriesOf(c, ctx.episodes);
     winfo.set(c.id, { c, entries: new Map(all.map((x) => [x.id, x])), text: all.map((x) => x.e.text).join('\n') });
     return { id: c.id, lines: all.map((x) => lineOf(x.id, x.e)) };
   });
-  const notes = chosen.length ? await askChecked(ask, writeup, writeupPrompt(wblocks), (raw) => checkWriteup(raw, winfo), opts.apiKey) : new Map();
+  const notes = chosen.length ? await askChecked(ask, writeup, writeupPrompt(wblocks), (raw) => checkWriteup(raw, winfo), opts.apiKey, { step: 'writeup', batch: 1, emit }) : new Map();
   writeup.items_out = notes?.size ?? 0;
   writeup.fallbacks = chosen.filter((s) => !notes?.has(s.c.id)).map((s) => s.c.id);
-  progress('writeup', 1, 1);
+  emit({ type: 'stage_progress', stage: 'writeup', done: 1, total: 1 });
+  done('writeup', `${writeup.items_out} of ${chosen.length} written${writeup.fallbacks.length ? `, ${writeup.fallbacks.length} fell back` : ''}`);
 
   // 5. Verify (code): a summary of every check above, then the final promos.
   const verify = newStage('verify', null, 0);
-  progress('verify', 0, 1);
   const llmStages = [judge, refine, writeup];
   verify.items_in = llmStages.reduce((n, s) => n + s.items_in, 0);
   verify.items_out = judge.items_out + writeup.items_out + (refine.fallbacks.length ? 0 : refine.items_in);
@@ -453,7 +497,6 @@ export async function runAgent(pool: Candidate[], deps: AgentDeps): Promise<{ pr
     if (s.fallback || !w) p.flags = [...p.flags, 'llm_fallback'];
     return p;
   });
-  progress('verify', 1, 1);
 
   const sum = (k: 'input_tokens' | 'output_tokens') => {
     const xs = trace.stages.map((s) => s[k]).filter((n): n is number => n !== null);

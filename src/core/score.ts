@@ -150,7 +150,27 @@ function stitched(singles: Candidate[], cache: ScoreCache, ctx: StandaloneContex
   return [...out.values()];
 }
 
-export function generateCandidates(episodes: Episode[], weights: Weights): { singles: Candidate[]; multi: Candidate[]; ctx: StandaloneContext } {
+/** Progress hooks for the live view. They observe only; the result is the same with or without them. */
+export interface GenerateHooks {
+  /** After each episode's cut points are found. */
+  onSegment?: (done: number, total: number, windows: number) => void;
+  onSegmentDone?: (windows: number) => void;
+  /** After each episode's windows are scored, with the best so far. */
+  onScore?: (done: number, total: number, generated: number, best: Candidate[]) => void;
+}
+
+// Kept large enough that ten remain after overlap removal in the live view.
+const TOP_LIVE = 60;
+
+function mergeBest(best: Candidate[], more: Candidate[]): Candidate[] {
+  return [...best, ...[...more].sort(byScore).slice(0, TOP_LIVE)].sort(byScore).slice(0, TOP_LIVE);
+}
+
+export function generateCandidates(
+  episodes: Episode[],
+  weights: Weights,
+  hooks: GenerateHooks = {},
+): { singles: Candidate[]; multi: Candidate[]; ctx: StandaloneContext } {
   const byNumber = new Map(episodes.map((e) => [e.number, e]));
   const ctx: StandaloneContext = {
     names: showNames(episodes),
@@ -158,9 +178,29 @@ export function generateCandidates(episodes: Episode[], weights: Weights): { sin
     episodes: byNumber,
   };
   const cache = new ScoreCache(byNumber);
-  const singles = episodes.flatMap((ep) => singleWindows(ep)).map((s) => score([s], cache, ctx, weights));
+  // Segment: the cut points of every episode.
+  let windowCount = 0;
+  const windows = episodes.map((ep, i) => {
+    const w = singleWindows(ep);
+    windowCount += w.length;
+    hooks.onSegment?.(i + 1, episodes.length, windowCount);
+    return w;
+  });
+  hooks.onSegmentDone?.(windowCount);
+  // Score: one episode at a time, so the best-so-far list can be shown while it runs.
+  const singles: Candidate[] = [];
+  let best: Candidate[] = [];
+  windows.forEach((ws, i) => {
+    const scored = ws.map((s) => score([s], cache, ctx, weights));
+    singles.push(...scored);
+    if (hooks.onScore) {
+      best = mergeBest(best, scored);
+      hooks.onScore(i + 1, windows.length + 1, singles.length, best);
+    }
+  });
   singles.sort(byScore);
   const multi = stitched(singles, cache, ctx, weights).sort(byScore);
+  if (hooks.onScore) hooks.onScore(windows.length + 1, windows.length + 1, singles.length + multi.length, mergeBest(best, multi));
   return { singles, multi, ctx };
 }
 

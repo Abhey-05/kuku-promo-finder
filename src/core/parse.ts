@@ -184,10 +184,16 @@ export function parseEpisode(file: string, source: string, fallbackNumber = 0): 
 }
 
 /** Parses a set of files. Files that yield nothing stay in the report but out of `episodes`. */
-export function parseAll(files: InputFile[]): { episodes: Episode[]; report: ParseReport } {
-  const parsed = [...files]
-    .sort((a, b) => a.name.localeCompare(b.name, 'en', { numeric: true }))
-    .map((f, i) => parseEpisode(f.name, f.text, i + 1));
+export function parseAll(
+  files: InputFile[],
+  onFile?: (p: { episode: Episode; report: EpisodeReport }, done: number, total: number) => void,
+): { episodes: Episode[]; report: ParseReport } {
+  const sorted = [...files].sort((a, b) => a.name.localeCompare(b.name, 'en', { numeric: true }));
+  const parsed = sorted.map((f, i) => {
+    const p = parseEpisode(f.name, f.text, i + 1);
+    onFile?.(p, i + 1, sorted.length);
+    return p;
+  });
   const episodes = parsed
     .map((p) => p.episode)
     .filter((e) => e.entries.length > 0)

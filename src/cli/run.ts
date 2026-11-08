@@ -8,6 +8,7 @@ import { resolveOptions, testConnection } from '../core/llm/interface';
 import { listGeminiModels } from '../core/llm/gemini';
 import type { InputFile } from '../core/schema';
 import { readCli, USAGE, withDotEnv } from './config';
+import { cliProgress } from './progress';
 
 function walk(dir: string): string[] {
   return readdirSync(dir).flatMap((n) => {
@@ -55,11 +56,7 @@ async function main() {
   }
   const files = await readInput(cli.input!);
   const out = cli.out!;
-  const result = await runPipeline(files, config, llm, {
-    onStage: (s, info) => {
-      if (config.provider !== 'none' && info?.total) process.stderr.write(`  ${s} ${info.done}/${info.total}\n`);
-    },
-  });
+  const result = await runPipeline(files, config, llm, { emit: cliProgress(process.stderr) });
   const root = resolve('.');
   const outputs = buildOutputs(result, {
     assumptions: readFileSync(join(root, 'ASSUMPTIONS.md'), 'utf8'),
