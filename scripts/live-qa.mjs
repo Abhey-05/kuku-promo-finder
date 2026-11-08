@@ -130,63 +130,77 @@ await press('?');
 check('? help lists the l shortcut', await seen(page.getByRole('cell', { name: 'Open or close the live log' })));
 await press('Escape');
 
-// 3. AI mode through the slow mock: mid-run state.
-await setModel({ provider: 'openai-compatible', baseUrl: `http://127.0.0.1:${MOCK_PORT}/v1`, model: 'mock-model', key: 'good-key' });
-await press('Escape');
-await press('u');
-await history();
-await press('r');
-const judgeRunning = await seen(page.locator('[data-testid="stage-judge"][data-status="running"]'), 15000);
-check('AI run: the judge stage shows as running', judgeRunning);
-if (!judgeRunning) console.log(page.url(), await page.getByTestId('mode-badge').textContent(), (await page.locator('main').innerText()).slice(0, 600));
-await page.waitForFunction(() => /[1-9]/.test(document.querySelector('[data-testid="live-counters"]')?.textContent?.match(/LLM calls(\d+)/)?.[1] ?? ''), null, { timeout: 10000 }).catch(() => {});
-const counters = (await page.getByTestId('live-counters').textContent()) ?? '';
-check('live counters show elapsed time, candidates and LLM calls', /Elapsed/.test(counters) && /LLM calls[1-9]/.test(counters), counters.replace(/\s+/g, ' ').slice(0, 120));
-check('provisional results are on screen mid-run', (await page.getByTestId('result-badge').first().textContent()) === 'provisional');
-await press('l');
-check('the log shows model calls as they happen', /judge batch 1: (started|ok)/.test((await page.getByRole('log').textContent()) ?? ''));
-await shot('live-04-ai-mid-run');
-await press('l');
-await page.waitForURL(/#\/results/, { timeout: 60000 });
-h = await history();
-check('AI run finishes with refine and write-up done', statusOf(h, 'stage-').filter((s) => s === 'done').length >= 8);
-await shot('live-05-ai-done');
+// 3 to 6 use the local mock model. An HTTPS page cannot call http://127.0.0.1, so they run only against a local URL.
+const local = /^http:\/\/(localhost|127\.0\.0\.1)/.test(url);
+if (local) {
+  // 3. AI mode through the slow mock: mid-run state.
+  await setModel({ provider: 'openai-compatible', baseUrl: `http://127.0.0.1:${MOCK_PORT}/v1`, model: 'mock-model', key: 'good-key' });
+  await press('Escape');
+  await press('u');
+  await history();
+  await press('r');
+  const judgeRunning = await seen(page.locator('[data-testid="stage-judge"][data-status="running"]'), 15000);
+  check('AI run: the judge stage shows as running', judgeRunning);
+  if (!judgeRunning) console.log(page.url(), await page.getByTestId('mode-badge').textContent(), (await page.locator('main').innerText()).slice(0, 600));
+  await page.waitForFunction(() => /[1-9]/.test(document.querySelector('[data-testid="live-counters"]')?.textContent?.match(/LLM calls(\d+)/)?.[1] ?? ''), null, { timeout: 10000 }).catch(() => {});
+  const counters = (await page.getByTestId('live-counters').textContent()) ?? '';
+  check('live counters show elapsed time, candidates and LLM calls', /Elapsed/.test(counters) && /LLM calls[1-9]/.test(counters), counters.replace(/\s+/g, ' ').slice(0, 120));
+  check('provisional results are on screen mid-run', (await page.getByTestId('result-badge').first().textContent()) === 'provisional');
+  await press('l');
+  check('the log shows model calls as they happen', /judge batch 1: (started|ok)/.test((await page.getByRole('log').textContent()) ?? ''));
+  await shot('live-04-ai-mid-run');
+  await press('l');
+  await page.waitForURL(/#\/results/, { timeout: 60000 });
+  h = await history();
+  check('AI run finishes with refine and write-up done', statusOf(h, 'stage-').filter((s) => s === 'done').length >= 8);
+  await shot('live-05-ai-done');
 
-// 4. Cancel mid-run.
-await press('u');
-await press('r');
-await seen(page.locator('[data-testid="stage-judge"][data-status="running"]'), 15000);
-await page.getByRole('button', { name: 'Cancel' }).click();
-check('Cancel shows "Cancelled at <stage>"', await seen(page.getByRole('heading', { name: /^Cancelled at / })), (await page.getByTestId('run-heading').textContent()) ?? '');
-check('cancelled results are kept and marked partial', (await page.getByTestId('result-badge').first().textContent()) === 'partial');
-check('no stage is left running after cancel', (await page.locator('[data-status="running"]').count()) === 0);
-await shot('live-06-cancelled');
+  // 4. Cancel mid-run.
+  await press('u');
+  await press('r');
+  await seen(page.locator('[data-testid="stage-judge"][data-status="running"]'), 15000);
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  check('Cancel shows "Cancelled at <stage>"', await seen(page.getByRole('heading', { name: /^Cancelled at / })), (await page.getByTestId('run-heading').textContent()) ?? '');
+  check('cancelled results are kept and marked partial', (await page.getByTestId('result-badge').first().textContent()) === 'partial');
+  check('no stage is left running after cancel', (await page.locator('[data-status="running"]').count()) === 0);
+  await shot('live-06-cancelled');
 
-// 5. A provider that rejects the key: the AI stages fall back, highlighted, with a retry.
-await setModel({ provider: 'openai-compatible', baseUrl: `http://127.0.0.1:${MOCK_PORT}/v1`, model: 'mock-model', key: 'wrong-key' });
-await press('Escape');
-await press('u');
-await press('r');
-await page.waitForURL(/#\/results/, { timeout: 60000 });
-await page.getByTestId('run-summary').locator(':scope > summary').click();
-check('fallbacks show in the warning colour on the stage', await seen(page.getByTestId('stage-judge').locator('.text-warn').first()));
-check('a "Retry the AI stages" button is offered', await seen(page.getByRole('button', { name: 'Retry the AI stages' }).first()));
-await shot('live-07-fallback-retry');
+  // 5. A provider that rejects the key: the AI stages fall back, highlighted, with a retry.
+  await setModel({ provider: 'openai-compatible', baseUrl: `http://127.0.0.1:${MOCK_PORT}/v1`, model: 'mock-model', key: 'wrong-key' });
+  await press('Escape');
+  await press('u');
+  await press('r');
+  await page.waitForURL(/#\/results/, { timeout: 60000 });
+  await page.getByTestId('run-summary').locator(':scope > summary').click();
+  check('fallbacks show in the warning colour on the stage', await seen(page.getByTestId('stage-judge').locator('.text-warn').first()));
+  check('a "Retry the AI stages" button is offered', await seen(page.getByRole('button', { name: 'Retry the AI stages' }).first()));
+  await shot('live-07-fallback-retry');
 
-// 6. Phone width, mid-run.
-await setModel({ provider: 'openai-compatible', baseUrl: `http://127.0.0.1:${MOCK_PORT}/v1`, model: 'mock-model', key: 'good-key' });
-await press('Escape');
-await page.setViewportSize({ width: 375, height: 800 });
-await press('u');
-await press('r');
-await seen(page.locator('[data-testid="stage-judge"][data-status="running"]'), 15000);
-check('no horizontal scroll at phone width mid-run', await noHScroll());
-const trackerBox = await page.getByTestId('stage-read').boundingBox();
-const resultsBox = await page.getByRole('region', { name: 'Live results' }).boundingBox();
-check('results stack below the tracker on a phone', !!trackerBox && !!resultsBox && resultsBox.y > trackerBox.y + 100);
-await shot('live-08-phone-mid-run');
-await page.waitForURL(/#\/results/, { timeout: 60000 });
-await page.setViewportSize({ width: 1200, height: 900 });
+  // 6. Phone width, mid-run.
+  await setModel({ provider: 'openai-compatible', baseUrl: `http://127.0.0.1:${MOCK_PORT}/v1`, model: 'mock-model', key: 'good-key' });
+  await press('Escape');
+  await page.setViewportSize({ width: 375, height: 800 });
+  await press('u');
+  await press('r');
+  await seen(page.locator('[data-testid="stage-judge"][data-status="running"]'), 15000);
+  check('no horizontal scroll at phone width mid-run', await noHScroll());
+  const trackerBox = await page.getByTestId('stage-read').boundingBox();
+  const resultsBox = await page.getByRole('region', { name: 'Live results' }).boundingBox();
+  check('results stack below the tracker on a phone', !!trackerBox && !!resultsBox && resultsBox.y > trackerBox.y + 100);
+  await shot('live-08-phone-mid-run');
+  await page.waitForURL(/#\/results/, { timeout: 60000 });
+  await page.setViewportSize({ width: 1200, height: 900 });
+} else {
+  console.log('     (HTTPS site: mock-model checks skipped; they need a local URL)');
+  await page.setViewportSize({ width: 375, height: 800 });
+  await press('u');
+  check('no horizontal scroll at phone width on the finished run view', await noHScroll());
+  const trackerBox = await page.getByTestId('stage-read').boundingBox();
+  const resultsBox = await page.getByRole('region', { name: 'Live results' }).boundingBox();
+  check('results stack below the tracker on a phone', !!trackerBox && !!resultsBox && resultsBox.y > trackerBox.y + 100);
+  await shot('live-08-phone-done');
+  await page.setViewportSize({ width: 1200, height: 900 });
+}
 
 // 7. Gemini, when a key is available (demo show only).
 if (geminiKey) {
